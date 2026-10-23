@@ -1,6 +1,6 @@
 import { isIdentity, isInvitation, isLoginResponse } from '@bossok/contracts';
-import type { HttpRequest } from '../../shared/http';
-import { RequestError } from '../../shared/http';
+import type { HttpRequest } from '../../shared/http/index.js';
+import { RequestError } from '../../shared/http/index.js';
 
 export function checked<T>(value: unknown, guard: (v: unknown) => v is T): T {
   if (!guard(value)) throw new RequestError('INVALID_RESPONSE', '服务返回格式不正确');

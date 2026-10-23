@@ -7,6 +7,7 @@ import { registerErrorHandlers } from './http/errors.js';
 
 export function buildApp(options: { databasePath: string; logger?: boolean; now?: () => number }) {
   const app = Fastify({
+    ajv: { customOptions: { removeAdditional: false } },
     logger: options.logger ? { redact: ['req.headers.authorization', 'req.headers.cookie'] } : false
   });
   const db = openDatabase(options.databasePath);

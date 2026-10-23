@@ -51,7 +51,7 @@ async function bind() { user.value = await identity.bind(sessionToken(), code.va
       </template>
       <view v-if="user.relationshipId && budget" class="card">
         <text class="description">预算历史（金额为元，首月不折算，下月沿用不结转）</text>
-        <text v-for="v in budget.history" :key="v.id" class="description">{{ v.kind === 'daily' ? '日额度' : '月预算' }} {{ (v.amount/100).toFixed(2) }} · {{ v.effectiveDate }} 生效 · {{ v.reason }} {{ v.kind === 'daily' ? ' · 计日分类：' + (v.categories.join('、') || '无') : '' }} · {{ new Date(v.createdAt).toISOString() }}</text>
+        <text v-for="v in budget.history" :key="v.id" class="description">{{ v.kind === 'daily' ? '日额度' : '月预算' }} {{ (v.amount/100).toFixed(2) }} · {{ v.effectiveDate }} 生效 · {{ v.reason }} {{ v.kind === 'daily' ? ' · 计日分类：' + (v.categories.join('、') || '无') : '' }} · {{ new Date(v.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) }} 上海时间</text>
         <template v-if="user.role === 'approver'">
           <input v-model="daily" aria-label="日额度" placeholder="日额度（元），留空保留" type="digit" />
           <input v-model="monthly" aria-label="月预算" placeholder="月预算（元），留空保留" type="digit" />
