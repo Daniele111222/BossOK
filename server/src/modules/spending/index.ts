@@ -1,3 +1,4 @@
+import { monthlySummarySchema } from '@bossok/contracts';
 import { confirmBodySchema, cancelBodySchema, type ConfirmInput, type CancelInput } from '@bossok/contracts';
 import { createApprovals } from './approval.js';
 import { createNotifications } from '../notifications/index.js';
@@ -14,6 +15,10 @@ import { createBudgets, businessDate, validDate } from './budget.js';
 export function registerSpending(app: FastifyInstance, db: Database.Database, identity: IdentityService, now = Date.now) {
   const budgets = createBudgets(db, now);
   const ledger = createLedger(db, budgets, now);
+  app.get<{Querystring:{month:string}}>('/api/summary',{schema:{response:{200:monthlySummarySchema},querystring:{type:'object',additionalProperties:false,required:['month'],properties:{month:{type:'string',pattern:'^\\d{4}-\\d{2}$'}}}}},async request=>{
+    const actor=identity.member(request);validDate(`${request.query.month}-01`,businessDate(now()));
+    return ledger.summary(actor.relationshipId,request.query.month);
+  });
   const notifications = createNotifications(db, now);
   notifications.register(app, identity);
   const approvals = createApprovals(db, ledger, (relationshipId,role,id,title) => notifications.write(identity.recipient(relationshipId,role),id,title), now);

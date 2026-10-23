@@ -199,3 +199,20 @@ export interface ConfirmInput { requestId: string; amount: number; spentOn: stri
 export interface CancelInput { requestId: string; reason: string }
 export const confirmBodySchema = { type: 'object', additionalProperties: false, required: ['requestId','amount','spentOn','note'], properties: { requestId: expenseBodySchema.properties.requestId, amount: amountSchema, spentOn: dateSchema, note: expenseBodySchema.properties.note } } as const;
 export const cancelBodySchema = { type: 'object', additionalProperties: false, required: ['requestId','reason'], properties: { requestId: expenseBodySchema.properties.requestId, reason: changeProperties.reason } } as const;
+
+
+export interface MonthlySummary {
+  month: string; startDate: string | null; endDate: string | null; eligibleDays: number; metDays: number;
+  budgetTotal: number; countedSpent: number; totalSpent: number; surplus: number | null;
+  categories: {category: Category; amount: number; countedAmount: number}[];
+}
+export const monthlySummarySchema = {type:'object',additionalProperties:false,required:['month','startDate','endDate','eligibleDays','metDays','budgetTotal','countedSpent','totalSpent','surplus','categories'],properties:{
+  month:{type:'string'},startDate:{type:['string','null']},endDate:{type:['string','null']},eligibleDays:{type:'integer'},metDays:{type:'integer'},budgetTotal:{type:'integer'},countedSpent:{type:'integer'},totalSpent:{type:'integer'},surplus:{type:['integer','null']},
+  categories:{type:'array',items:{type:'object',required:['category','amount','countedAmount'],properties:{category:{enum:categories},amount:{type:'integer'},countedAmount:{type:'integer'}}}}
+}} as const;
+export function isMonthlySummary(value: unknown): value is MonthlySummary {
+  const v=value as MonthlySummary | null;
+  return !!v && typeof v.month==='string' && (v.startDate===null || typeof v.startDate==='string') && (v.endDate===null || typeof v.endDate==='string')
+    && [v.eligibleDays,v.metDays,v.budgetTotal,v.countedSpent,v.totalSpent].every(Number.isSafeInteger) && (v.surplus===null || Number.isSafeInteger(v.surplus))
+    && Array.isArray(v.categories) && v.categories.every(c=>!!c && categories.includes(c.category) && Number.isSafeInteger(c.amount) && Number.isSafeInteger(c.countedAmount));
+}

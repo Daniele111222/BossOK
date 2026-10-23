@@ -1,6 +1,7 @@
+import { categories } from '@bossok/contracts';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
-import type { Expense, ExpenseInput, ExpenseChangeInput, ExpenseEditInput, RefundInput, ExpenseChange, Balances, Category } from '@bossok/contracts';
+import type { Expense, ExpenseInput, ExpenseChangeInput, ExpenseEditInput, RefundInput, ExpenseChange, Balances, Category, MonthlySummary } from '@bossok/contracts';
 import { HttpError } from '../../http/errors.js';
 import { createBudgets, businessDate } from './budget.js';
 const select = 'SELECT id,request_id AS requestId,amount,category,spent_on AS spentOn,note,created_at AS createdAt,budget_applicable AS budgetApplicable,unapproved,approval_id AS approvalId,CASE WHEN approval_id IS NOT NULL THEN CASE WHEN unapproved=1 THEN max(0,amount-COALESCE((SELECT sum(amount) FROM approval_credits WHERE expense_id=expenses.id AND spent_on=expenses.spent_on),0)) ELSE 0 END ELSE CASE WHEN unapproved=1 THEN amount ELSE 0 END END AS unapprovedAmount,version,deleted_at AS deletedAt,COALESCE((SELECT sum(refund_amount) FROM expense_changes WHERE expense_id=expenses.id),0) AS refunded FROM expenses';
@@ -9,9 +10,35 @@ function dto(row: Expense, startDate: string | null): Expense {
   return { ...row, budgetApplicable: !!startDate && row.spentOn >= startDate, unapproved: row.deletedAt === null && (row.approvalId ? row.unapprovedAmount > 0 : !!row.unapproved), unapprovedAmount: row.deletedAt === null ? row.unapprovedAmount : 0 };
 }
 export function createLedger(db: Database.Database, budgets: ReturnType<typeof createBudgets>, now: () => number) {
+  function netEntries(relationshipId: string, month: string, startDate: string | null) {
+    return db.prepare('SELECT amount-COALESCE((SELECT sum(refund_amount) FROM expense_changes WHERE expense_id=expenses.id),0) AS amount,category,spent_on FROM expenses WHERE deleted_at IS NULL AND relationship_id=? AND substr(spent_on,1,7)=? AND spent_on>=?').all(relationshipId,month,startDate ?? '9999-12-31') as {amount: number;category: Category;spent_on: string}[];
+  }
+  function summary(relationshipId: string, month: string): MonthlySummary {
+    const today = businessDate(now()), first = `${month}-01`;
+    const start = budgets.snapshot(relationshipId,today).startDate;
+    const rows = netEntries(relationshipId,month,start).filter(r => r.spent_on < today);
+    const result: MonthlySummary = {month, startDate:null, endDate:null, eligibleDays:0, metDays:0, budgetTotal:0, countedSpent:0, totalSpent:0, surplus:null, categories:categories.map(category=>({category,amount:0,countedAmount:0}))};
+    const cursor = new Date(`${first}T00:00:00Z`);
+    for (let date=first; date.slice(0,7)===month && date<today; cursor.setUTCDate(cursor.getUTCDate()+1),date=cursor.toISOString().slice(0,10)) {
+      const daily = budgets.snapshot(relationshipId,date).daily;
+      if (!daily) continue;
+      const entries=rows.filter(r=>r.spent_on===date);
+      const spent=entries.filter(r=>daily.categories.includes(r.category)).reduce((sum,r)=>sum+r.amount,0);
+      result.startDate ??= date; result.endDate=date; result.eligibleDays++;
+      result.budgetTotal+=daily.amount; result.countedSpent+=spent;
+      if(spent<=daily.amount) result.metDays++;
+      for(const row of entries) {
+        const category=result.categories.find(c=>c.category===row.category)!;
+        category.amount+=row.amount; result.totalSpent+=row.amount;
+        if(daily.categories.includes(row.category)) category.countedAmount+=row.amount;
+      }
+    }
+    if(result.eligibleDays) result.surplus=result.budgetTotal-result.countedSpent;
+    return result;
+  }
   function balances(relationshipId: string, date: string): Balances {
     const budget = budgets.snapshot(relationshipId, date);
-    const rows = db.prepare('SELECT amount-COALESCE((SELECT sum(refund_amount) FROM expense_changes WHERE expense_id=expenses.id),0) AS amount,category,spent_on FROM expenses WHERE deleted_at IS NULL AND relationship_id=? AND substr(spent_on,1,7)=? AND spent_on>=?').all(relationshipId, date.slice(0,7), budget.startDate ?? '9999-12-31') as { amount: number; category: string; spent_on: string }[];
+    const rows = netEntries(relationshipId,date.slice(0,7),budget.startDate);
     const dailySpent = rows.filter(r => r.spent_on === date && budget.daily?.categories.includes(r.category as Category)).reduce((sum,r) => sum+r.amount, 0);
     const monthlySpent = rows.reduce((sum,r) => sum+r.amount, 0);
     const commitments = date === businessDate(now()) ? db.prepare("SELECT amount,category FROM approvals WHERE relationship_id=? AND spent_on=? AND status='approved' AND kind='purchase'").all(relationshipId,date) as { amount: number; category: Category }[] : [];
@@ -110,5 +137,5 @@ export function createLedger(db: Database.Database, budgets: ReturnType<typeof c
     db.prepare('INSERT INTO approval_credits(approval_id,expense_id,amount,spent_on) VALUES(?,?,?,?)').run(approvalId,id,amount,expense.spentOn);
     db.prepare('UPDATE expenses SET version=version+1 WHERE id=?').run(id);
   }
-  return { create, list, balances, get, detail, change, approveDifference };
+  return { create, list, balances, summary, get, detail, change, approveDifference };
 }
