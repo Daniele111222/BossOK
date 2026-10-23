@@ -1,8 +1,11 @@
+import { isExpenseDetail, type ExpenseChangeInput, type ExpenseEditInput, type RefundInput } from '@bossok/contracts';
 import { isBudgetSnapshot, isBalances, isExpense, isLedgerPage, type ExpenseInput, type Category, type BudgetInput } from '@bossok/contracts';
 import { checked } from '../identity/index.js';
 import type { HttpRequest } from '../../shared/http/index.js';
 export function createSpendingClient(request: HttpRequest) {
   return {
+    async expense(token: string, id: string) { return checked(await request(`/expenses/${encodeURIComponent(id)}`, { token }), isExpenseDetail); },
+    async changeExpense(token: string, id: string, kind: 'update' | 'delete' | 'refunds', body: ExpenseChangeInput | ExpenseEditInput | RefundInput) { return checked(await request(`/expenses/${encodeURIComponent(id)}/${kind}`, { method: 'POST', token, body }), isExpense); },
     async balances(token: string) { return checked(await request('/balances', { token }), isBalances); },
     async createExpense(token: string, body: ExpenseInput) { return checked(await request('/expenses', { method: 'POST', token, body }), isExpense); },
     async ledger(token: string, month: string, category?: Category, page = 1) { return checked(await request(`/expenses?month=${encodeURIComponent(month)}&page=${page}${category ? `&category=${encodeURIComponent(category)}` : ''}`, { token }), isLedgerPage); },

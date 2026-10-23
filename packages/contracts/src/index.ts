@@ -114,7 +114,7 @@ export const budgetSnapshotSchema = {
 } as const;
 
 export interface ExpenseInput { requestId: string; amount: number; category: Category; spentOn: string; note: string }
-export interface Expense extends ExpenseInput { id: string; createdAt: number; budgetApplicable: boolean; unapproved: boolean }
+export interface Expense extends ExpenseInput { id: string; createdAt: number; budgetApplicable: boolean; unapproved: boolean; version: number; deletedAt: number | null; refunded: number }
 export interface LedgerPage { records: Expense[]; total: number; page: number; pageSize: number }
 export interface Balances { budget: BudgetSnapshot; dailySpent: number; monthlySpent: number; dailyRemaining: number | null; monthlyRemaining: number | null }
 export const expenseBodySchema = {
@@ -122,15 +122,15 @@ export const expenseBodySchema = {
   properties: { requestId: { type: 'string', minLength: 8, maxLength: 80, pattern: '^[a-zA-Z0-9_-]+$' }, amount: amountSchema, category: { enum: categories }, spentOn: dateSchema, note: { type: 'string', maxLength: 500 } }
 } as const;
 export const expenseSchema = { type: 'object', additionalProperties: false,
-  required: [...expenseBodySchema.required, 'id', 'createdAt', 'budgetApplicable', 'unapproved'],
-  properties: { ...expenseBodySchema.properties, id: { type: 'string' }, createdAt: { type: 'integer' }, budgetApplicable: { type: 'boolean' }, unapproved: { type: 'boolean' } }
+  required: [...expenseBodySchema.required, 'id', 'createdAt', 'budgetApplicable', 'unapproved', 'version', 'deletedAt', 'refunded'],
+  properties: { ...expenseBodySchema.properties, id: { type: 'string' }, createdAt: { type: 'integer' }, budgetApplicable: { type: 'boolean' }, unapproved: { type: 'boolean' }, version: { type: 'integer' }, deletedAt: { type: ['integer', 'null'] }, refunded: { type: 'integer' } }
 } as const;
 export const ledgerPageSchema = { type: 'object', required: ['records','total','page','pageSize'], properties: { records: { type: 'array', items: expenseSchema }, total: { type: 'integer' }, page: { type: 'integer' }, pageSize: { type: 'integer' } } } as const;
 export const balancesSchema = { type: 'object', required: ['budget', 'dailySpent', 'monthlySpent', 'dailyRemaining', 'monthlyRemaining'], properties: { budget: budgetSnapshotSchema, dailySpent: { type: 'integer' }, monthlySpent: { type: 'integer' }, dailyRemaining: { type: ['integer', 'null'] }, monthlyRemaining: { type: ['integer', 'null'] } } } as const;
 export function isExpense(value: unknown): value is Expense {
   const v = value as Expense | null;
   return !!v && typeof v.id === 'string' && typeof v.requestId === 'string' && Number.isSafeInteger(v.amount) && v.amount > 0 && categories.includes(v.category)
-    && typeof v.spentOn === 'string' && typeof v.note === 'string' && typeof v.createdAt === 'number' && typeof v.budgetApplicable === 'boolean' && typeof v.unapproved === 'boolean';
+    && typeof v.spentOn === 'string' && typeof v.note === 'string' && typeof v.createdAt === 'number' && typeof v.budgetApplicable === 'boolean' && typeof v.unapproved === 'boolean' && Number.isInteger(v.version) && (v.deletedAt === null || Number.isSafeInteger(v.deletedAt)) && Number.isSafeInteger(v.refunded);
 }
 export function isLedgerPage(value: unknown): value is LedgerPage {
   const v = value as LedgerPage | null;
@@ -141,3 +141,18 @@ export function isBalances(value: unknown): value is Balances {
   return !!v && isBudgetSnapshot(v.budget) && Number.isSafeInteger(v.dailySpent) && Number.isSafeInteger(v.monthlySpent)
     && (v.dailyRemaining === null || Number.isSafeInteger(v.dailyRemaining)) && (v.monthlyRemaining === null || Number.isSafeInteger(v.monthlyRemaining));
 }
+
+export interface ExpenseChangeInput { requestId: string; version: number; reason: string }
+export interface ExpenseEditInput extends ExpenseChangeInput { amount: number; category: Category; spentOn: string; note: string }
+export interface RefundInput extends ExpenseChangeInput { amount: number; refundedOn: string }
+export interface ExpenseChange { kind: 'update' | 'delete' | 'refund'; reason: string; before: Expense; after: Expense; refundAmount: number; refundedOn: string | null; createdAt: number }
+export interface ExpenseDetail { expense: Expense; changes: ExpenseChange[] }
+export const changeProperties = { requestId: expenseBodySchema.properties.requestId, version: { type: 'integer', minimum: 1 }, reason: { type: 'string', minLength: 1, maxLength: 300 } } as const;
+export const expenseChangeSchema = { type: 'object', additionalProperties: false, required: ['requestId', 'version', 'reason'], properties: changeProperties } as const;
+export const expenseEditSchema = { type: 'object', additionalProperties: false, required: [...expenseChangeSchema.required, 'amount', 'category', 'spentOn', 'note'], properties: { ...changeProperties, amount: amountSchema, category: { enum: categories }, spentOn: dateSchema, note: expenseBodySchema.properties.note } } as const;
+export const refundBodySchema = { type: 'object', additionalProperties: false, required: [...expenseChangeSchema.required, 'amount', 'refundedOn'], properties: { ...changeProperties, amount: amountSchema, refundedOn: dateSchema } } as const;
+export function isExpenseDetail(value: unknown): value is ExpenseDetail {
+  const v = value as ExpenseDetail | null;
+  return !!v && isExpense(v.expense) && Array.isArray(v.changes) && v.changes.every(c => ['update','delete','refund'].includes(c.kind) && typeof c.reason === 'string' && isExpense(c.before) && isExpense(c.after) && Number.isSafeInteger(c.refundAmount) && (c.refundedOn === null || typeof c.refundedOn === 'string') && Number.isSafeInteger(c.createdAt));
+}
+export const expenseDetailSchema = { type: 'object', required: ['expense','changes'], properties: { expense: expenseSchema, changes: { type: 'array', items: { type: 'object', required: ['kind','reason','before','after','refundAmount','refundedOn','createdAt'], properties: { kind: { enum: ['update','delete','refund'] }, reason: { type: 'string' }, before: expenseSchema, after: expenseSchema, refundAmount: { type: 'integer' }, refundedOn: { type: ['string','null'] }, createdAt: { type: 'integer' } } } } } } as const;

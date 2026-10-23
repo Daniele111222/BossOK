@@ -124,3 +124,54 @@ it('首次预算按消费日期生效，同日既有支出与预算前日期显�
     expect((await f.app.inject({ url: '/api/balances', headers: f.self })).json().monthlySpent).toBe(100);
   } finally { await f.close(); }
 });
+
+it('更正、退款和逻辑删除保留轨迹，重试不重复，旧版本不能覆盖', async () => {
+  const f = await fixture();
+  try {
+    await f.app.inject({ method: 'POST', url: '/api/budget', headers: f.boss, payload: { daily: 8000, monthly: 200000, reason: '测试' } });
+    const original = (await f.app.inject({ method: 'POST', url: '/api/expenses', headers: f.self, payload: { requestId: 'maintain-original', amount: 6500, category: '餐饮', spentOn: '2026-10-23', note: '' } })).json();
+    const change = (kind: string, payload: object, headers = f.self, id = original.id) => f.app.inject({ method: 'POST', url: `/api/expenses/${id}/${kind}`, headers, payload });
+    const edit = { requestId: 'edit-request-001', version: 1, amount: 7000, category: '餐饮', spentOn: '2026-10-23', note: '更正', reason: '漏计' };
+    expect((await change('update', edit)).statusCode).toBe(200);
+    expect((await change('update', edit)).json().version).toBe(2);
+    expect((await change('update', { ...edit, requestId: 'edit-request-002' })).statusCode).toBe(409);
+    expect((await change('update', { ...edit, version: 2 }, f.boss)).statusCode).toBe(403);
+    expect((await change('update', { ...edit, version: 2 }, f.self, 'foreign')).statusCode).toBe(404);
+    f.setDate('2026-11-01T04:00:00Z');
+    const login = async (username: string) => ({ authorization: `Bearer ${(await f.app.inject({ method: 'POST', url: '/api/login', payload: { username, password: `password-test-${username}` } })).json().token}` });
+    const self = await login('self'), boss = await login('boss');
+    const refund = { requestId: 'refund-request-001', version: 2, amount: 2000, refundedOn: '2026-11-01', reason: '部分退款' };
+    expect((await change('refunds', refund, self)).json().refunded).toBe(2000);
+    expect((await change('refunds', refund, self)).json().refunded).toBe(2000);
+    expect((await change('refunds', { ...refund, requestId: 'refund-request-002', version: 3, amount: 5001 }, self)).statusCode).toBe(409);
+    expect((await change('update', { ...edit, requestId: 'edit-too-low', version: 3, amount: 1999 }, self)).statusCode).toBe(409);
+    expect((await change('delete', { requestId: 'delete-refunded', version: 3, reason: '删除' }, self)).statusCode).toBe(409);
+    expect((await change('refunds', { ...refund, requestId: 'refund-request-003', version: 3, amount: 1000 }, self)).json().refunded).toBe(3000);
+    f.setDate('2026-10-23T04:00:00Z');
+    expect((await f.app.inject({ url: '/api/balances', headers: boss })).json()).toMatchObject({ dailySpent: 4000, monthlySpent: 4000, dailyRemaining: 4000 });
+    f.setDate('2026-11-02T04:00:00Z');
+    expect((await change('update', { ...edit, requestId: 'invalid-refund-date', version: 4, spentOn: '2026-11-02' }, self)).statusCode).toBe(400);
+    const detail = (await f.app.inject({ url: `/api/expenses/${original.id}`, headers: boss })).json();
+    expect(detail.changes.map((c: { kind: string }) => c.kind)).toEqual(['update', 'refund', 'refund']);
+    expect(detail.expense).toMatchObject({ amount: 7000, refunded: 3000, version: 4 });
+    expect((await f.app.inject({ url: '/api/balances', headers: boss })).json().monthlySpent).toBe(0);
+    const rows = (await f.app.inject({ url: '/api/expenses?month=2026-10', headers: self })).json();
+    expect(rows.records[0].refunded).toBe(3000);
+    const second = (await f.app.inject({ method: 'POST', url: '/api/expenses', headers: self, payload: { requestId: 'delete-original', amount: 100, category: '餐饮', spentOn: '2026-11-01', note: '' } })).json();
+    expect((await change('delete', { requestId: 'delete-request-001', version: 1, reason: '误记' }, self, second.id)).json().deletedAt).toBeTypeOf('number');
+    expect((await f.app.inject({ url: '/api/balances', headers: boss })).json().monthlySpent).toBe(0);
+    expect((await f.app.inject({ url: `/api/expenses/${second.id}`, headers: boss })).json().changes[0].kind).toBe('delete');
+  } finally { await f.close(); }
+});
+
+it('变更历史写入失败时账目和额度一起回滚', async () => {
+  const f = await fixture();
+  try {
+    const payload = { requestId: 'rollback-original', amount: 6500, category: '餐饮', spentOn: '2026-10-23', note: '' };
+    const original = (await f.app.inject({ method: 'POST', url: '/api/expenses', headers: f.self, payload })).json();
+    f.db.exec("CREATE TRIGGER fail_change BEFORE INSERT ON expense_changes BEGIN SELECT RAISE(ABORT, 'test fault'); END");
+    expect((await f.app.inject({ method: 'POST', url: `/api/expenses/${original.id}/delete`, headers: f.self, payload: { requestId: 'rollback-delete-01', version: 1, reason: '测试' } })).statusCode).toBe(500);
+    const detail = (await f.app.inject({ url: `/api/expenses/${original.id}`, headers: f.boss })).json();
+    expect(detail.expense).toMatchObject({ deletedAt: null, version: 1 }); expect(detail.changes).toEqual([]);
+  } finally { await f.close(); }
+});
