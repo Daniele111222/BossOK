@@ -1,39 +1,32 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { onLoad } from '@dcloudio/uni-app';
-import { health } from '../../application';
-
-const message = ref('尚未检查服务连接');
-const loading = ref(false);
-
-async function connect() {
-  if (loading.value) return;
-  loading.value = true;
-  message.value = '正在连接服务…';
-  try {
-    await health.check();
-    message.value = '服务与数据库连接正常';
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : '连接失败，请重试';
-  } finally {
-    loading.value = false;
-  }
+import { onShow } from '@dcloudio/uni-app';
+import type { BudgetSnapshot, Identity } from '@bossok/contracts';
+import { currentUser, spending, sessionToken } from '../../application';
+const budget = ref<BudgetSnapshot | null>(null), user = ref<Identity | null>(null), message = ref(''), busy = ref(false);
+async function refresh() {
+  busy.value = true; message.value = ''; budget.value = null; user.value = null;
+  try { user.value = await currentUser(); budget.value = await spending.budget(sessionToken()); }
+  catch(e) { message.value = e instanceof Error ? e.message : '加载失败'; }
+  finally { busy.value = false; }
 }
-
-onLoad(() => { void connect(); });
+function profile() { uni.switchTab({ url: '/pages/profile/index' }); }
+onShow(() => { void refresh(); });
 </script>
-
 <template>
   <view class="page">
     <text class="title">老板批了</text>
-    <text class="description">每天花钱有上限，省下的钱看得见。</text>
-    <view class="card">
-      <text class="description">工程初始化 · 服务连接</text>
-      <text class="description">{{ message }}</text>
-      <button class="action" :loading="loading" :disabled="loading" @click="connect">检查连接</button>
-    </view>
-    <view class="card">
-      <text class="description">预算与账目功能将在后续开发中接入。</text>
-    </view>
+    <text class="description" role="alert">{{ message }}</text>
+    <template v-if="budget">
+      <text class="description">{{ budget.date }} · 上海时间 · 不结转余额</text>
+      <view v-if="budget.daily && budget.monthly" class="card">
+        <text class="description">日额度：{{ (budget.daily.amount / 100).toFixed(2) }} 元（{{ budget.daily.effectiveDate }} 起）</text>
+        <text class="description">月预算：{{ (budget.monthly.amount / 100).toFixed(2) }} 元（{{ budget.monthly.effectiveDate }} 起沿用）</text>
+        <text class="description">计日分类：{{ budget.daily.categories.join('、') || '无' }}；全部分类计月预算</text>
+      </view>
+      <text v-else class="description">尚未设置预算，{{ user?.role === 'approver' ? '请到我的页面设置' : '请等待审批人设置' }}</text>
+    </template>
+    <button :disabled="busy" @click="refresh">刷新</button>
+    <button @click="profile">登录 / 绑定 / 预算设置</button>
   </view>
 </template>

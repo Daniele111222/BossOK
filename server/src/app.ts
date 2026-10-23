@@ -1,3 +1,4 @@
+import { registerSpending } from './modules/spending/index.js';
 import { createIdentity } from './modules/identity/index.js';
 import Fastify from 'fastify';
 import { openDatabase } from './infrastructure/database/index.js';
@@ -15,6 +16,7 @@ export function buildApp(options: { databasePath: string; logger?: boolean; now?
     registerErrorHandlers(app);
     const identity = createIdentity(db, options.now);
     app.register(async (instance) => identity.register(instance));
+    app.register(async (instance) => registerSpending(instance, db, identity, options.now));
     app.register(healthModule, { db, prefix: '/api' });
     return app;
   } catch (error) {

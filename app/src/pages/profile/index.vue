@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import type { Identity } from '@bossok/contracts';
-import { currentUser, identity, sessionToken } from '../../application';
+import { categories, yuanToCents, type BudgetSnapshot, type Category, type Identity } from '@bossok/contracts';
+import { currentUser, identity, sessionToken, spending } from '../../application';
 const user = ref<Identity | null>(null), username = ref(''), password = ref(''), code = ref('');
+const budget = ref<BudgetSnapshot | null>(null), daily = ref(''), monthly = ref(''), reason = ref('');
+const selected = ref<Category[]>([]);
+async function loadBudget() { budget.value = await spending.budget(sessionToken()); selected.value = budget.value.history.filter(v => v.kind === 'daily').slice(-1)[0]?.categories ?? categories.filter(c => c !== '生活缴费'); }
+async function saveBudget() {
+  budget.value = await spending.saveBudget(sessionToken(), { ...(daily.value ? { daily: yuanToCents(daily.value) } : {}), ...(monthly.value ? { monthly: yuanToCents(monthly.value) } : {}), dailyCategories: selected.value, reason: reason.value });
+  daily.value = ''; monthly.value = ''; reason.value = ''; message.value = '预算已保存，具体生效日期见下方历史';
+}
 const accepted = ref(false), busy = ref(false), message = ref('');
 async function run(action: () => Promise<void>) {
   if (busy.value) return;
@@ -11,15 +18,15 @@ async function run(action: () => Promise<void>) {
   try { await action(); } catch (e) { message.value = e instanceof Error ? e.message : '操作失败'; }
   finally { busy.value = false; }
 }
-async function refresh() { user.value = null; if (sessionToken()) user.value = await currentUser(); }
+async function refresh() { user.value = null; budget.value = null; if (sessionToken()) { user.value = await currentUser(); if (user.value.relationshipId) await loadBudget(); } }
 onShow(() => { void run(refresh); });
 async function login() {
   const result = await identity.login(username.value, password.value);
-  uni.setStorageSync('session', result.token); password.value = ''; user.value = result.user;
+  uni.setStorageSync('session', result.token); password.value = ''; user.value = result.user; if (user.value.relationshipId) await loadBudget();
 }
 async function logout() { await identity.logout(sessionToken()); uni.removeStorageSync('session'); user.value = null; code.value = ''; }
 async function invite() { const result = await identity.invite(sessionToken()); code.value = result.code; message.value = '邀请码 24 小时有效，仅可使用一次'; }
-async function bind() { user.value = await identity.bind(sessionToken(), code.value); code.value = ''; }
+async function bind() { user.value = await identity.bind(sessionToken(), code.value); code.value = ''; await loadBudget(); }
 </script>
 <template>
   <view class="page">
@@ -42,6 +49,21 @@ async function bind() { user.value = await identity.bind(sessionToken(), code.va
           <button :disabled="busy || !accepted" @click="run(bind)">接受并绑定</button>
         </template>
       </template>
+      <view v-if="user.relationshipId && budget" class="card">
+        <text class="description">预算历史（金额为元，首月不折算，下月沿用不结转）</text>
+        <text v-for="v in budget.history" :key="v.id" class="description">{{ v.kind === 'daily' ? '日额度' : '月预算' }} {{ (v.amount/100).toFixed(2) }} · {{ v.effectiveDate }} 生效 · {{ v.reason }} {{ v.kind === 'daily' ? ' · 计日分类：' + (v.categories.join('、') || '无') : '' }} · {{ new Date(v.createdAt).toISOString() }}</text>
+        <template v-if="user.role === 'approver'">
+          <input v-model="daily" aria-label="日额度" placeholder="日额度（元），留空保留" type="digit" />
+          <input v-model="monthly" aria-label="月预算" placeholder="月预算（元），留空保留" type="digit" />
+          <text class="description">计入日额度的分类（全部分类均计月预算）</text>
+          <checkbox-group @change="selected = $event.detail.value as Category[]">
+            <label v-for="c in categories" :key="c"><checkbox :value="c" :checked="selected.includes(c)" />{{ c }}</label>
+          </checkbox-group>
+          <input v-model="reason" aria-label="修改原因" placeholder="设置/修改原因（必填）" maxlength="300" />
+          <text class="description">首次当日生效；日额度/分类后续调整次日生效；月预算立即生效。</text>
+          <button :disabled="busy" @click="run(saveBudget)">保存预算</button>
+        </template>
+      </view>
       <button :disabled="busy" @click="run(logout)">退出登录</button>
     </template>
     <text role="alert" class="description">{{ message }}</text>

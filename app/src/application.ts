@@ -1,3 +1,5 @@
+import { createSpendingClient } from "./features/spending/index";
+
 import { createIdentityClient } from "./features/identity/index";
 import { RequestError } from "./shared/http";
 
@@ -18,3 +20,4 @@ export async function currentUser() {
     throw error;
   }
 }
+export const spending = createSpendingClient(request);

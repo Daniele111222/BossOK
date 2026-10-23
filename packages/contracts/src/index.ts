@@ -74,3 +74,41 @@ export const invitationSchema = {
   type: 'object', required: ['code', 'expiresAt'], additionalProperties: false,
   properties: { code: stringField(64), expiresAt: { type: 'integer' } }
 } as const;
+
+export const categories = ['餐饮', '交通', '购物', '娱乐', '生活缴费', '其他'] as const;
+export type Category = typeof categories[number];
+export const defaultDailyCategories: Category[] = categories.filter(c => c !== '生活缴费');
+export interface BudgetVersion { id: number; kind: 'daily' | 'monthly'; amount: number; categories: Category[]; effectiveDate: string; reason: string; createdAt: number }
+export interface BudgetSnapshot { date: string; startDate: string | null; daily: BudgetVersion | null; monthly: BudgetVersion | null; history: BudgetVersion[] }
+export interface BudgetInput { daily?: number; monthly?: number; dailyCategories?: Category[]; reason: string }
+export const amountSchema = { type: 'integer', minimum: 1, maximum: 100000000 } as const;
+export const dateSchema = { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' } as const;
+export const budgetBodySchema = {
+  type: 'object', additionalProperties: false, required: ['reason'], minProperties: 2,
+  properties: { daily: amountSchema, monthly: amountSchema, dailyCategories: { type: 'array', uniqueItems: true, maxItems: 6, items: { enum: categories } }, reason: { type: 'string', minLength: 1, maxLength: 300 } }
+} as const;
+export function isBudgetVersion(value: unknown): value is BudgetVersion {
+  const v = value as BudgetVersion | null;
+  return !!v && Number.isSafeInteger(v.id) && (v.kind === 'daily' || v.kind === 'monthly') && Number.isSafeInteger(v.amount) && v.amount > 0
+    && Array.isArray(v.categories) && v.categories.every(c => categories.includes(c)) && typeof v.effectiveDate === 'string' && typeof v.reason === 'string' && typeof v.createdAt === 'number';
+}
+export function isBudgetSnapshot(value: unknown): value is BudgetSnapshot {
+  const v = value as BudgetSnapshot | null;
+  return !!v && typeof v.date === 'string' && (v.startDate === null || typeof v.startDate === 'string')
+    && (v.daily === null || isBudgetVersion(v.daily)) && (v.monthly === null || isBudgetVersion(v.monthly)) && Array.isArray(v.history) && v.history.every(isBudgetVersion);
+}
+export function yuanToCents(value: string): number {
+  if (!/^\d+(\.\d{1,2})?$/.test(value)) throw new Error('金额需为正数，最多两位小数');
+  const [whole, fraction = ''] = value.split('.');
+  const amount = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 100000000) throw new Error('金额范围为 0.01–1,000,000 元');
+  return amount;
+}
+export const budgetVersionSchema = {
+  type: 'object', additionalProperties: false, required: ['id', 'kind', 'amount', 'categories', 'effectiveDate', 'reason', 'createdAt'],
+  properties: { id: { type: 'integer' }, kind: { enum: ['daily', 'monthly'] }, amount: amountSchema, categories: { type: 'array', items: { enum: categories } }, effectiveDate: dateSchema, reason: { type: 'string' }, createdAt: { type: 'integer' } }
+} as const;
+export const budgetSnapshotSchema = {
+  type: 'object', additionalProperties: false, required: ['date', 'startDate', 'daily', 'monthly', 'history'],
+  properties: { date: dateSchema, startDate: { type: ['string', 'null'] }, daily: { anyOf: [budgetVersionSchema, { type: 'null' }] }, monthly: { anyOf: [budgetVersionSchema, { type: 'null' }] }, history: { type: 'array', items: budgetVersionSchema } }
+} as const;
