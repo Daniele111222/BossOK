@@ -1,3 +1,4 @@
+import { confirmBodySchema, cancelBodySchema, type ConfirmInput, type CancelInput } from '@bossok/contracts';
 import { createApprovals } from './approval.js';
 import { createNotifications } from '../notifications/index.js';
 import { approvalBodySchema, approvalActionSchema, approvalSchema, approvalPageSchema, approvalDetailSchema, approvalPreviewSchema, type ApprovalInput, type ApprovalAction } from '@bossok/contracts';
@@ -16,6 +17,19 @@ export function registerSpending(app: FastifyInstance, db: Database.Database, id
   const notifications = createNotifications(db, now);
   notifications.register(app, identity);
   const approvals = createApprovals(db, ledger, (relationshipId,role,id,title) => notifications.write(identity.recipient(relationshipId,role),id,title), now);
+  app.post<{ Params: { id: string }; Body: ConfirmInput }>('/api/approvals/:id/confirm', { schema: { body: confirmBodySchema, response: { 200: approvalSchema } } }, async request => {
+    const actor = identity.member(request,'applicant');
+    validDate(request.body.spentOn,businessDate(now()));
+    return approvals.consume(actor.relationshipId,actor.id,request.params.id,request.body,'confirm');
+  });
+  app.post<{ Params: { id: string }; Body: CancelInput }>('/api/approvals/:id/cancel', { schema: { body: cancelBodySchema, response: { 200: approvalSchema } } }, async request => {
+    const actor = identity.member(request,'applicant');
+    return approvals.consume(actor.relationshipId,actor.id,request.params.id,request.body,'cancel');
+  });
+  app.post<{ Params: { id: string }; Body: ExpenseChangeInput }>('/api/expenses/:id/supplements', { schema: { body: expenseChangeSchema, response: { 200: approvalSchema } } }, async request => {
+    const actor = identity.member(request,'applicant');
+    return approvals.supplement(actor.relationshipId,actor.id,request.params.id,request.body);
+  });
   app.post<{ Body: ApprovalInput }>('/api/approvals/preview', { schema: { body: approvalBodySchema, response: { 200: approvalPreviewSchema } } }, async request => approvals.preview(identity.member(request, 'applicant').relationshipId,request.body));
   app.post<{ Body: ApprovalInput }>('/api/approvals', { schema: { body: approvalBodySchema, response: { 200: approvalSchema } } }, async request => {
     const actor = identity.member(request,'applicant');

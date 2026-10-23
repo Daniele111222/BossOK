@@ -114,7 +114,7 @@ export const budgetSnapshotSchema = {
 } as const;
 
 export interface ExpenseInput { requestId: string; amount: number; category: Category; spentOn: string; note: string }
-export interface Expense extends ExpenseInput { id: string; createdAt: number; budgetApplicable: boolean; unapproved: boolean; version: number; deletedAt: number | null; refunded: number }
+export interface Expense extends ExpenseInput { id: string; createdAt: number; budgetApplicable: boolean; unapproved: boolean; version: number; deletedAt: number | null; refunded: number; approvalId: string | null; unapprovedAmount: number }
 export interface LedgerPage { records: Expense[]; total: number; page: number; pageSize: number }
 export interface Balances { budget: BudgetSnapshot; dailySpent: number; monthlySpent: number; dailyRemaining: number | null; monthlyRemaining: number | null; dailyCommitted: number; monthlyCommitted: number; dailyAvailable: number | null; monthlyAvailable: number | null }
 export const expenseBodySchema = {
@@ -122,15 +122,15 @@ export const expenseBodySchema = {
   properties: { requestId: { type: 'string', minLength: 8, maxLength: 80, pattern: '^[a-zA-Z0-9_-]+$' }, amount: amountSchema, category: { enum: categories }, spentOn: dateSchema, note: { type: 'string', maxLength: 500 } }
 } as const;
 export const expenseSchema = { type: 'object', additionalProperties: false,
-  required: [...expenseBodySchema.required, 'id', 'createdAt', 'budgetApplicable', 'unapproved', 'version', 'deletedAt', 'refunded'],
-  properties: { ...expenseBodySchema.properties, id: { type: 'string' }, createdAt: { type: 'integer' }, budgetApplicable: { type: 'boolean' }, unapproved: { type: 'boolean' }, version: { type: 'integer' }, deletedAt: { type: ['integer', 'null'] }, refunded: { type: 'integer' } }
+  required: [...expenseBodySchema.required, 'id', 'createdAt', 'budgetApplicable', 'unapproved', 'version', 'deletedAt', 'refunded', 'approvalId', 'unapprovedAmount'],
+  properties: { ...expenseBodySchema.properties, id: { type: 'string' }, createdAt: { type: 'integer' }, budgetApplicable: { type: 'boolean' }, unapproved: { type: 'boolean' }, version: { type: 'integer' }, deletedAt: { type: ['integer', 'null'] }, refunded: { type: 'integer' }, approvalId: { type: ['string','null'] }, unapprovedAmount: { type: 'integer' } }
 } as const;
 export const ledgerPageSchema = { type: 'object', required: ['records','total','page','pageSize'], properties: { records: { type: 'array', items: expenseSchema }, total: { type: 'integer' }, page: { type: 'integer' }, pageSize: { type: 'integer' } } } as const;
 export const balancesSchema = { type: 'object', required: ['budget', 'dailySpent', 'monthlySpent', 'dailyRemaining', 'monthlyRemaining', 'dailyCommitted', 'monthlyCommitted', 'dailyAvailable', 'monthlyAvailable'], properties: { budget: budgetSnapshotSchema, dailySpent: { type: 'integer' }, monthlySpent: { type: 'integer' }, dailyRemaining: { type: ['integer', 'null'] }, monthlyRemaining: { type: ['integer', 'null'] }, dailyCommitted: { type: 'integer' }, monthlyCommitted: { type: 'integer' }, dailyAvailable: { type: ['integer','null'] }, monthlyAvailable: { type: ['integer','null'] } } } as const;
 export function isExpense(value: unknown): value is Expense {
   const v = value as Expense | null;
   return !!v && typeof v.id === 'string' && typeof v.requestId === 'string' && Number.isSafeInteger(v.amount) && v.amount > 0 && categories.includes(v.category)
-    && typeof v.spentOn === 'string' && typeof v.note === 'string' && typeof v.createdAt === 'number' && typeof v.budgetApplicable === 'boolean' && typeof v.unapproved === 'boolean' && Number.isInteger(v.version) && (v.deletedAt === null || Number.isSafeInteger(v.deletedAt)) && Number.isSafeInteger(v.refunded);
+    && typeof v.spentOn === 'string' && typeof v.note === 'string' && typeof v.createdAt === 'number' && typeof v.budgetApplicable === 'boolean' && typeof v.unapproved === 'boolean' && Number.isInteger(v.version) && (v.deletedAt === null || Number.isSafeInteger(v.deletedAt)) && Number.isSafeInteger(v.refunded) && (v.approvalId === null || typeof v.approvalId === 'string') && Number.isSafeInteger(v.unapprovedAmount);
 }
 export function isLedgerPage(value: unknown): value is LedgerPage {
   const v = value as LedgerPage | null;
@@ -159,24 +159,24 @@ export const expenseDetailSchema = { type: 'object', required: ['expense','chang
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn' | 'expired' | 'consumed' | 'cancelled';
 export interface ApprovalInput { requestId: string; amount: number; category: Category; spentOn: string; purpose: string; reason: string }
-export interface Approval extends ApprovalInput { id: string; status: ApprovalStatus; opinion: string; dailyOver: number; monthlyOver: number; createdAt: number; approvedAt: number | null; expiredFrom: string | null }
+export interface Approval extends ApprovalInput { id: string; status: ApprovalStatus; opinion: string; dailyOver: number; monthlyOver: number; createdAt: number; approvedAt: number | null; expiredFrom: string | null; kind: 'purchase' | 'supplement'; expenseId: string | null; expenseVersion: number | null }
 export interface ApprovalAction { requestId: string; action: 'approve' | 'reject' | 'withdraw'; opinion: string }
 export interface ApprovalEvent { action: string; opinion: string; actorId: string | null; createdAt: number }
 export interface ApprovalPage { records: Approval[]; total: number; page: number; pageSize: number }
-export interface ApprovalDetail extends ApprovalPreview { approval: Approval; history: ApprovalEvent[]; balances: Balances }
+export interface ApprovalDetail extends ApprovalPreview { approval: Approval; expense: Expense | null; history: ApprovalEvent[]; balances: Balances }
 export interface ApprovalPreview { dailyOver: number; monthlyOver: number; balances: Balances }
 export interface Message { id: string; approvalId: string; title: string; createdAt: number }
 export interface MessagePage { records: Message[]; total: number; page: number; pageSize: number }
 export const approvalBodySchema = { type: 'object', additionalProperties: false, required: ['requestId','amount','category','spentOn','purpose','reason'], properties: { requestId: expenseBodySchema.properties.requestId, amount: amountSchema, category: { enum: categories }, spentOn: dateSchema, purpose: { type: 'string', minLength: 1, maxLength: 100 }, reason: { type: 'string', minLength: 1, maxLength: 300 } } } as const;
 export const approvalActionSchema = { type: 'object', additionalProperties: false, required: ['requestId','action','opinion'], properties: { requestId: expenseBodySchema.properties.requestId, action: { enum: ['approve','reject','withdraw'] }, opinion: { type: 'string', maxLength: 300 } } } as const;
-export const approvalSchema = { type: 'object', additionalProperties: false, required: [...approvalBodySchema.required,'id','status','opinion','dailyOver','monthlyOver','createdAt','approvedAt','expiredFrom'], properties: { ...approvalBodySchema.properties, id: { type: 'string' }, status: { enum: ['pending','approved','rejected','withdrawn','expired','consumed','cancelled'] }, opinion: { type: 'string' }, dailyOver: { type: 'integer' }, monthlyOver: { type: 'integer' }, createdAt: { type: 'integer' }, approvedAt: { type: ['integer','null'] }, expiredFrom: { type: ['string','null'] } } } as const;
+export const approvalSchema = { type: 'object', additionalProperties: false, required: [...approvalBodySchema.required,'id','status','opinion','dailyOver','monthlyOver','createdAt','approvedAt','expiredFrom','kind','expenseId','expenseVersion'], properties: { ...approvalBodySchema.properties, id: { type: 'string' }, status: { enum: ['pending','approved','rejected','withdrawn','expired','consumed','cancelled'] }, opinion: { type: 'string' }, dailyOver: { type: 'integer' }, monthlyOver: { type: 'integer' }, createdAt: { type: 'integer' }, approvedAt: { type: ['integer','null'] }, expiredFrom: { type: ['string','null'] }, kind: { enum: ['purchase','supplement'] }, expenseId: { type: ['string','null'] }, expenseVersion: { type: ['integer','null'] } } } as const;
 export const approvalPageSchema = { type: 'object', required: ['records','total','page','pageSize'], properties: { records: { type: 'array', items: approvalSchema }, total: { type: 'integer' }, page: { type: 'integer' }, pageSize: { type: 'integer' } } } as const;
 export const approvalPreviewSchema = { type: 'object', required: ['dailyOver','monthlyOver','balances'], properties: { dailyOver: { type: 'integer' }, monthlyOver: { type: 'integer' }, balances: balancesSchema } } as const;
-export const approvalDetailSchema = { type: 'object', required: ['approval','history','balances','dailyOver','monthlyOver'], properties: { approval: approvalSchema, dailyOver: { type: 'integer' }, monthlyOver: { type: 'integer' }, balances: balancesSchema, history: { type: 'array', items: { type: 'object', required: ['action','opinion','actorId','createdAt'], properties: { action: { type: 'string' }, opinion: { type: 'string' }, actorId: { type: ['string','null'] }, createdAt: { type: 'integer' } } } } } } as const;
+export const approvalDetailSchema = { type: 'object', required: ['approval','expense','history','balances','dailyOver','monthlyOver'], properties: { approval: approvalSchema, expense: { anyOf: [expenseSchema, { type: 'null' }] }, dailyOver: { type: 'integer' }, monthlyOver: { type: 'integer' }, balances: balancesSchema, history: { type: 'array', items: { type: 'object', required: ['action','opinion','actorId','createdAt'], properties: { action: { type: 'string' }, opinion: { type: 'string' }, actorId: { type: ['string','null'] }, createdAt: { type: 'integer' } } } } } } as const;
 export const messagePageSchema = { type: 'object', required: ['records','total','page','pageSize'], properties: { records: { type: 'array', items: { type: 'object', required: ['id','approvalId','title','createdAt'], properties: { id: { type: 'string' }, approvalId: { type: 'string' }, title: { type: 'string' }, createdAt: { type: 'integer' } } } }, total: { type: 'integer' }, page: { type: 'integer' }, pageSize: { type: 'integer' } } } as const;
 export function isApproval(value: unknown): value is Approval {
   const v = value as Approval | null;
-  return !!v && typeof v.id === 'string' && typeof v.requestId === 'string' && Number.isSafeInteger(v.amount) && v.amount > 0 && categories.includes(v.category) && typeof v.spentOn === 'string' && typeof v.purpose === 'string' && typeof v.reason === 'string' && ['pending','approved','rejected','withdrawn','expired','consumed','cancelled'].includes(v.status) && typeof v.opinion === 'string' && Number.isSafeInteger(v.dailyOver) && Number.isSafeInteger(v.monthlyOver) && Number.isSafeInteger(v.createdAt) && (v.approvedAt === null || Number.isSafeInteger(v.approvedAt)) && (v.expiredFrom === null || typeof v.expiredFrom === 'string');
+  return !!v && typeof v.id === 'string' && typeof v.requestId === 'string' && Number.isSafeInteger(v.amount) && v.amount > 0 && categories.includes(v.category) && typeof v.spentOn === 'string' && typeof v.purpose === 'string' && typeof v.reason === 'string' && ['pending','approved','rejected','withdrawn','expired','consumed','cancelled'].includes(v.status) && typeof v.opinion === 'string' && Number.isSafeInteger(v.dailyOver) && Number.isSafeInteger(v.monthlyOver) && Number.isSafeInteger(v.createdAt) && (v.approvedAt === null || Number.isSafeInteger(v.approvedAt)) && (v.expiredFrom === null || typeof v.expiredFrom === 'string') && (v.kind === 'purchase' || v.kind === 'supplement') && (v.expenseId === null || typeof v.expenseId === 'string') && (v.expenseVersion === null || Number.isInteger(v.expenseVersion));
 }
 export function isApprovalPage(value: unknown): value is ApprovalPage {
   const v = value as ApprovalPage | null;
@@ -188,9 +188,14 @@ export function isApprovalPreview(value: unknown): value is ApprovalPreview {
 }
 export function isApprovalDetail(value: unknown): value is ApprovalDetail {
   const v = value as ApprovalDetail | null;
-  return !!v && isApproval(v.approval) && isApprovalPreview(v) && Array.isArray(v.history) && v.history.every(e => !!e && typeof e === 'object' && typeof e.action === 'string' && typeof e.opinion === 'string' && (e.actorId === null || typeof e.actorId === 'string') && Number.isSafeInteger(e.createdAt));
+  return !!v && isApproval(v.approval) && (v.expense === null || isExpense(v.expense)) && isApprovalPreview(v) && Array.isArray(v.history) && v.history.every(e => !!e && typeof e === 'object' && typeof e.action === 'string' && typeof e.opinion === 'string' && (e.actorId === null || typeof e.actorId === 'string') && Number.isSafeInteger(e.createdAt));
 }
 export function isMessagePage(value: unknown): value is MessagePage {
   const v = value as MessagePage | null;
   return !!v && Array.isArray(v.records) && v.records.every(m => !!m && typeof m === 'object' && typeof m.id === 'string' && typeof m.approvalId === 'string' && typeof m.title === 'string' && Number.isSafeInteger(m.createdAt)) && Number.isInteger(v.total) && Number.isInteger(v.page) && Number.isInteger(v.pageSize);
 }
+
+export interface ConfirmInput { requestId: string; amount: number; spentOn: string; note: string }
+export interface CancelInput { requestId: string; reason: string }
+export const confirmBodySchema = { type: 'object', additionalProperties: false, required: ['requestId','amount','spentOn','note'], properties: { requestId: expenseBodySchema.properties.requestId, amount: amountSchema, spentOn: dateSchema, note: expenseBodySchema.properties.note } } as const;
+export const cancelBodySchema = { type: 'object', additionalProperties: false, required: ['requestId','reason'], properties: { requestId: expenseBodySchema.properties.requestId, reason: changeProperties.reason } } as const;

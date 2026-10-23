@@ -7,7 +7,7 @@ import { RequestError } from '../../shared/http';
 const user = ref<Identity | null>(null), list = ref<LedgerPage | null>(null), busy = ref(false), message = ref('');
 const month = ref(''), filter = ref<Category | undefined>(), amount = ref(''), category = ref<Category>('餐饮'), spentOn = ref(''), note = ref('');
 const detail = ref<ExpenseDetail | null>(null), editAmount = ref(''), editCategory = ref<Category>('餐饮'), editDate = ref(''), editNote = ref(''), reason = ref(''), refundAmount = ref(''), refundDate = ref('');
-type Mutation = { id: string; kind: 'update' | 'delete' | 'refunds'; body: ExpenseChangeInput | ExpenseEditInput | RefundInput };
+type Mutation = { id: string; kind: 'update' | 'delete' | 'refunds' | 'supplements'; body: ExpenseChangeInput | ExpenseEditInput | RefundInput };
 const mutation = ref<Mutation | null>(null);
 function mutationKey() { return `expense-mutation-${user.value!.id}`; }
 async function showDetail(id: string) {
@@ -19,13 +19,18 @@ async function showDetail(id: string) {
 async function retryMutation() {
   if (!mutation.value) return;
   const id = mutation.value.id;
-  try { await spending.changeExpense(sessionToken(), id, mutation.value.kind, mutation.value.body); }
+  let approvalId: string | null = null;
+  try {
+    if (mutation.value.kind === 'supplements') approvalId = (await spending.supplementExpense(sessionToken(),id,mutation.value.body)).id;
+    else await spending.changeExpense(sessionToken(), id, mutation.value.kind, mutation.value.body);
+  }
   catch(e) {
     if (e instanceof RequestError && e.statusCode >= 400 && e.statusCode < 500 && ![401,403].includes(e.statusCode)) { uni.removeStorageSync(mutationKey()); mutation.value = null; }
     throw e;
   }
   uni.removeStorageSync(mutationKey()); mutation.value = null;
   await showDetail(id); await load(); message.value = '操作成功';
+  if (approvalId) openApproval(approvalId);
 }
 async function change(kind: Mutation['kind']) {
   if (!detail.value || mutation.value) return;
@@ -36,6 +41,7 @@ async function change(kind: Mutation['kind']) {
   mutation.value = { id: detail.value.expense.id, kind, body }; uni.setStorageSync(mutationKey(), mutation.value);
   await retryMutation();
 }
+function openApproval(id: string) { uni.setStorageSync('open-approval',id); uni.switchTab({url:'/pages/approval/index'}); }
 const pending = ref<ExpenseInput | null>(null);
 function draftKey() { return `expense-pending-${user.value!.id}`; }
 async function load(page = 1) { list.value = await spending.ledger(sessionToken(), month.value, filter.value, page); }
@@ -59,6 +65,8 @@ async function refresh() {
   if (!month.value) month.value = balance.budget.date.slice(0,7);
   if (!spentOn.value) spentOn.value = balance.budget.date;
   await load();
+  const openId = uni.getStorageSync('open-expense');
+  if (openId) { uni.removeStorageSync('open-expense'); await showDetail(String(openId)); }
 }
 async function submit() {
   if (!pending.value) {
@@ -93,6 +101,8 @@ onShow(() => { void run(refresh); });
       <view v-if="mutation" class="card"><text class="description">变更结果待确认，重试同一操作。</text><button :disabled="busy" @click="run(retryMutation)">重试账目变更</button></view>
       <view v-if="detail" class="card">
         <text class="description">账目详情 · 版本 {{ detail.expense.version }} · 已退款 {{ (detail.expense.refunded/100).toFixed(2) }} 元</text>
+        <text v-if="detail.expense.approvalId" class="description">关联批准；当前未批准差额 {{ (detail.expense.unapprovedAmount/100).toFixed(2) }} 元。改单跨日不转移批准，缩额后再次增加需重新判断。</text>
+        <button v-if="detail.expense.approvalId" :disabled="busy" @click="openApproval(detail.expense.approvalId)">查看原审批与消费历史</button>
         <text v-if="detail.expense.deletedAt !== null" class="description">已删除（保留历史，不计支出）</text>
         <template v-if="user.role === 'applicant' && detail.expense.deletedAt === null">
           <input v-model="editAmount" aria-label="更正金额" placeholder="更正金额（元）" :disabled="busy || !!mutation" />
@@ -100,6 +110,7 @@ onShow(() => { void run(refresh); });
           <picker mode="date" :value="editDate" :disabled="busy || !!mutation" @change="editDate = String($event.detail.value)"><view>更正消费日：{{ editDate }}</view></picker>
           <input v-model="editNote" aria-label="更正备注" placeholder="备注" maxlength="500" :disabled="busy || !!mutation" />
           <input v-model="reason" aria-label="变更原因" placeholder="更正/删除/退款原因（必填）" maxlength="300" :disabled="busy || !!mutation" />
+          <button v-if="detail.expense.approvalId && detail.expense.unapprovedAmount > 0" :disabled="busy || !!mutation" @click="run(() => change('supplements'))">申请未批准差额补批（使用上述原因）</button>
           <button :disabled="busy || !!mutation" @click="run(() => change('update'))">保存更正</button>
           <button :disabled="busy || !!mutation || detail.expense.refunded > 0" @click="run(() => change('delete'))">删除误记账目</button>
           <input v-model="refundAmount" aria-label="退款金额" placeholder="退款金额（元）" :disabled="busy || !!mutation" />
@@ -124,7 +135,7 @@ onShow(() => { void run(refresh); });
           <text v-if="record.deletedAt !== null" class="description">已删除，不计支出</text>
           <text class="description">已退款 {{ (record.refunded/100).toFixed(2) }} 元 · 净支出 {{ ((record.deletedAt !== null ? 0 : record.amount-record.refunded)/100).toFixed(2) }} 元</text>
           <button :disabled="busy || !!mutation" @click="run(() => showDetail(record.id))">详情 / 更正 / 退款</button>
-          <text v-if="record.unapproved" class="description">未审批超支（录入时标记）</text>
+          <text v-if="record.unapproved" class="description">{{ record.approvalId ? `未批准差额 ${(record.unapprovedAmount/100).toFixed(2)} 元` : '未审批超支（录入时标记）' }}</text>
         </view>
         <text class="description">共 {{ list.total }} 笔 · 第 {{ list.page }} 页</text>
         <button :disabled="busy || list.page <= 1" @click="run(() => load(list!.page-1))">上一页</button>
