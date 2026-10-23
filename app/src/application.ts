@@ -1,3 +1,4 @@
+import { createNotificationsClient } from './features/notifications/index';
 import { createSpendingClient } from "./features/spending/index";
 
 import { createIdentityClient } from "./features/identity/index";
@@ -21,3 +22,5 @@ export async function currentUser() {
   }
 }
 export const spending = createSpendingClient(request);
+
+export const notifications = createNotificationsClient(request);

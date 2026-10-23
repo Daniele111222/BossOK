@@ -97,6 +97,11 @@ export function createIdentity(db: Database.Database, now = Date.now) {
       return user(actor.id);
     });
   }
-  return { authenticate, member, register };
+  function recipient(relationshipId: string, role: Role): string {
+    const row = db.prepare('SELECT approver_id,applicant_id FROM relationships WHERE id=?').get(relationshipId) as { approver_id: string; applicant_id: string } | undefined;
+    if (!row) throw new HttpError(404, 'NOT_FOUND', '共享关系不存在');
+    return role === 'approver' ? row.approver_id : row.applicant_id;
+  }
+  return { authenticate, member, register, recipient };
 }
 export type IdentityService = ReturnType<typeof createIdentity>;

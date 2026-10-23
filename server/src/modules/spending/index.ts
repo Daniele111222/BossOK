@@ -1,3 +1,6 @@
+import { createApprovals } from './approval.js';
+import { createNotifications } from '../notifications/index.js';
+import { approvalBodySchema, approvalActionSchema, approvalSchema, approvalPageSchema, approvalDetailSchema, approvalPreviewSchema, type ApprovalInput, type ApprovalAction } from '@bossok/contracts';
 import { expenseChangeSchema, expenseEditSchema, refundBodySchema, expenseDetailSchema, type ExpenseChangeInput, type ExpenseEditInput, type RefundInput } from '@bossok/contracts';
 import { createLedger } from './ledger.js';
 import { categories, expenseBodySchema, expenseSchema, ledgerPageSchema, balancesSchema, type ExpenseInput } from '@bossok/contracts';
@@ -10,6 +13,23 @@ import { createBudgets, businessDate, validDate } from './budget.js';
 export function registerSpending(app: FastifyInstance, db: Database.Database, identity: IdentityService, now = Date.now) {
   const budgets = createBudgets(db, now);
   const ledger = createLedger(db, budgets, now);
+  const notifications = createNotifications(db, now);
+  notifications.register(app, identity);
+  const approvals = createApprovals(db, ledger, (relationshipId,role,id,title) => notifications.write(identity.recipient(relationshipId,role),id,title), now);
+  app.post<{ Body: ApprovalInput }>('/api/approvals/preview', { schema: { body: approvalBodySchema, response: { 200: approvalPreviewSchema } } }, async request => approvals.preview(identity.member(request, 'applicant').relationshipId,request.body));
+  app.post<{ Body: ApprovalInput }>('/api/approvals', { schema: { body: approvalBodySchema, response: { 200: approvalSchema } } }, async request => {
+    const actor = identity.member(request,'applicant');
+    return approvals.create(actor.relationshipId,actor.id,request.body);
+  });
+  app.get<{ Querystring: { month: string; page?: number } }>('/api/approvals', { schema: { response: { 200: approvalPageSchema }, querystring: { type: 'object', additionalProperties: false, required: ['month'], properties: { month: { type: 'string', pattern: '^\\d{4}-\\d{2}$' }, page: { type: 'integer', minimum: 1, maximum: 100000 } } } } }, async request => {
+    const actor = identity.member(request); validDate(`${request.query.month}-01`, businessDate(now()));
+    return approvals.list(actor.relationshipId,request.query.month,request.query.page ?? 1);
+  });
+  app.get<{ Params: { id: string } }>('/api/approvals/:id', { schema: { response: { 200: approvalDetailSchema } } }, async request => approvals.detail(identity.member(request).relationshipId,request.params.id));
+  app.post<{ Params: { id: string }; Body: ApprovalAction }>('/api/approvals/:id/actions', { schema: { body: approvalActionSchema, response: { 200: approvalSchema } } }, async request => {
+    const actor = identity.member(request);
+    return approvals.act(actor.relationshipId,actor.id,actor.role,request.params.id,request.body);
+  });
   app.get<{ Params: { id: string } }>('/api/expenses/:id', { schema: { response: { 200: expenseDetailSchema } } }, async request => ledger.detail(identity.member(request).relationshipId, request.params.id));
   for (const [path, kind, schema] of [['update','update',expenseEditSchema], ['delete','delete',expenseChangeSchema], ['refunds','refund',refundBodySchema]] as const) {
     app.post<{ Params: { id: string }; Body: ExpenseChangeInput | ExpenseEditInput | RefundInput }>(`/api/expenses/:id/${path}`, { schema: { body: schema, response: { 200: expenseSchema } } }, async request => {

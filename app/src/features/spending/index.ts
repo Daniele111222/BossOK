@@ -1,9 +1,15 @@
+import { isApproval, isApprovalPage, isApprovalDetail, isApprovalPreview, type ApprovalInput, type ApprovalAction } from '@bossok/contracts';
 import { isExpenseDetail, type ExpenseChangeInput, type ExpenseEditInput, type RefundInput } from '@bossok/contracts';
 import { isBudgetSnapshot, isBalances, isExpense, isLedgerPage, type ExpenseInput, type Category, type BudgetInput } from '@bossok/contracts';
 import { checked } from '../identity/index.js';
 import type { HttpRequest } from '../../shared/http/index.js';
 export function createSpendingClient(request: HttpRequest) {
   return {
+    async approvals(token: string, month: string, page = 1) { return checked(await request(`/approvals?month=${encodeURIComponent(month)}&page=${page}`, { token }), isApprovalPage); },
+    async approval(token: string, id: string) { return checked(await request(`/approvals/${encodeURIComponent(id)}`, { token }), isApprovalDetail); },
+    async previewApproval(token: string, body: ApprovalInput) { return checked(await request('/approvals/preview', { method: 'POST', token, body }), isApprovalPreview); },
+    async createApproval(token: string, body: ApprovalInput) { return checked(await request('/approvals', { method: 'POST', token, body }), isApproval); },
+    async actApproval(token: string, id: string, body: ApprovalAction) { return checked(await request(`/approvals/${encodeURIComponent(id)}/actions`, { method: 'POST', token, body }), isApproval); },
     async expense(token: string, id: string) { return checked(await request(`/expenses/${encodeURIComponent(id)}`, { token }), isExpenseDetail); },
     async changeExpense(token: string, id: string, kind: 'update' | 'delete' | 'refunds', body: ExpenseChangeInput | ExpenseEditInput | RefundInput) { return checked(await request(`/expenses/${encodeURIComponent(id)}/${kind}`, { method: 'POST', token, body }), isExpense); },
     async balances(token: string) { return checked(await request('/balances', { token }), isBalances); },
