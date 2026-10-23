@@ -1,7 +1,8 @@
 import { isErrorResponse } from '@bossok/contracts';
 
-export type HttpTransport = (url: string) => Promise<{ statusCode: number; data: unknown }>;
-export type HttpRequest = (path: string) => Promise<unknown>;
+export interface RequestOptions { method?: 'GET' | 'POST'; body?: unknown; token?: string }
+export type HttpTransport = (url: string, options?: RequestOptions) => Promise<{ statusCode: number; data: unknown }>;
+export type HttpRequest = (path: string, options?: RequestOptions) => Promise<unknown>;
 
 export class RequestError extends Error {
   constructor(
@@ -13,14 +14,14 @@ export class RequestError extends Error {
 }
 
 export function createHttpClient(options: { baseUrl: string; transport: HttpTransport }): HttpRequest {
-  return async (path) => {
+  return async (path, requestOptions) => {
     const baseUrl = options.baseUrl.trim().replace(/\/+$/, '');
     if (!baseUrl) {
       throw new RequestError('CONFIG_ERROR', '请先配置 VITE_API_BASE_URL 为手机可访问的服务地址');
     }
     let response: Awaited<ReturnType<HttpTransport>>;
     try {
-      response = await options.transport(`${baseUrl}${path}`);
+      response = await options.transport(`${baseUrl}${path}`, requestOptions);
     } catch {
       throw new RequestError('NETWORK_ERROR', '无法连接服务，请检查网络和接口地址');
     }

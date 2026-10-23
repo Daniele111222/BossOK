@@ -20,7 +20,8 @@ it('SQLite 重启后保留数据，迁移幂等并执行约束', () => {
     expect(first.open).toBe(false);
     const second = openDatabase(path);
     try {
-      expect(second.prepare('SELECT count(*) AS count FROM schema_migrations').get()).toEqual({ count: 1 });
+      expect(second.prepare('SELECT name FROM schema_migrations ORDER BY name').all()).toEqual(
+        ['001_users.sql', '002_identity.sql'].map((name) => ({ name })));
       expect(second.prepare('SELECT username FROM users WHERE id = ?').get('test-user'))
         .toEqual({ username: 'tester' });
       expect(second.pragma('foreign_keys', { simple: true })).toBe(1);

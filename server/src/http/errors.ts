@@ -1,6 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import type { ErrorResponse } from '@bossok/contracts';
 
+export class HttpError extends Error {
+  constructor(readonly statusCode: number, readonly code: string, message: string) { super(message); }
+}
+
 export function registerErrorHandlers(app: FastifyInstance) {
   app.setNotFoundHandler((request, reply) => {
     const response: ErrorResponse = {
@@ -14,8 +18,8 @@ export function registerErrorHandlers(app: FastifyInstance) {
     const statusCode = typeof status === 'number' && status >= 400 && status < 500 ? status : 500;
     if (statusCode === 500) request.log.error({ err: error }, '请求处理失败');
     const response: ErrorResponse = {
-      code: statusCode === 500 ? 'INTERNAL_ERROR' : 'INVALID_REQUEST',
-      message: statusCode === 500 ? '服务暂时不可用，请稍后重试' : '请求参数或格式不正确',
+      code: error instanceof HttpError ? error.code : statusCode === 500 ? 'INTERNAL_ERROR' : 'INVALID_REQUEST',
+      message: error instanceof HttpError ? error.message : statusCode === 500 ? '服务暂时不可用，请稍后重试' : '请求参数或格式不正确',
       requestId: request.id
     };
     return reply.code(statusCode).send(response);

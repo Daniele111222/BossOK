@@ -1,0 +1,51 @@
+import { expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { buildApp } from '../src/app.js';
+import { openDatabase } from '../src/infrastructure/database/index.js';
+import { createAccount, resetPassword } from '../src/modules/identity/index.js';
+
+it('受控账户、角色、共享确认、单次邀请码、会话退出/过期/重置', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'identity-')), path = join(dir, 'test.sqlite');
+  let now = Date.UTC(2026, 9, 23);
+  const db = openDatabase(path);
+  const app = buildApp({ databasePath: path, now: () => now });
+  try {
+    await createAccount(db, 'boss', 'approver', 'test-password-boss');
+    await createAccount(db, 'self', 'applicant', 'test-password-self');
+    expect(() => db.prepare("INSERT INTO users(id,username,password_hash,role) VALUES('x','third','hash','approver')").run()).toThrow();
+    const login = async (username: string, password: string) => app.inject({ method: 'POST', url: '/api/login', payload: { username, password, role: 'approver' } });
+    expect((await login('boss', 'wrong')).statusCode).toBe(401);
+    expect((await app.inject('/api/me')).statusCode).toBe(401);
+    const boss = (await login('boss', 'test-password-boss')).json();
+    const self = (await login('self', 'test-password-self')).json();
+    expect(self.user.role).toBe('applicant');
+    expect(boss.expiresAt - now).toBe(7 * 86400000);
+    const headers = { authorization: `Bearer ${boss.token}` }, applicant = { authorization: `Bearer ${self.token}` };
+    expect((await app.inject({ method: 'POST', url: '/api/invitations', headers: applicant })).statusCode).toBe(403);
+    let invite = (await app.inject({ method: 'POST', url: '/api/invitations', headers })).json();
+    expect(invite.expiresAt - now).toBe(86400000);
+    const bind = (payload: object) => app.inject({ method: 'POST', url: '/api/bind', headers: applicant, payload });
+    expect((await bind({ code: invite.code })).statusCode).toBe(400);
+    now += 86400000;
+    expect((await bind({ code: invite.code, acceptSharing: true })).statusCode).toBe(409);
+    invite = (await app.inject({ method: 'POST', url: '/api/invitations', headers })).json();
+    expect((await bind({ code: 'bad', acceptSharing: true })).statusCode).toBe(409);
+    const bound = await bind({ code: invite.code, acceptSharing: true });
+    expect(bound.statusCode).toBe(200);
+    expect((await app.inject({ url: '/api/me', headers })).json().relationshipId).toBe(bound.json().relationshipId);
+    expect((await bind({ code: invite.code, acceptSharing: true })).statusCode).toBe(403);
+    expect(JSON.stringify(db.prepare('SELECT * FROM sessions').all())).not.toContain(boss.token);
+    expect(JSON.stringify(db.prepare('SELECT * FROM users').all())).not.toContain('test-password');
+    await app.inject({ method: 'POST', url: '/api/logout', headers });
+    expect((await app.inject({ url: '/api/me', headers })).statusCode).toBe(401);
+    await resetPassword(db, 'self', 'new-password-self');
+    expect((await app.inject({ url: '/api/me', headers: applicant })).statusCode).toBe(401);
+    expect((await login('self', 'test-password-self')).statusCode).toBe(401);
+    const fresh = (await login('self', 'new-password-self')).json();
+    now += 7 * 86400000;
+    expect((await app.inject({ url: '/api/me', headers: { authorization: `Bearer ${fresh.token}` } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/api/invitations', headers: { authorization: `Bearer ${fresh.token}` } })).statusCode).toBe(401);
+  } finally { await app.close(); db.close(); rmSync(dir, { recursive: true, force: true }); }
+});
