@@ -1,0 +1,19 @@
+{
+  "name": "老板批了",
+  "appid": "",
+  "description": "每日预算、记账与超支审批",
+  "versionName": "0.1.0",
+  "versionCode": "1",
+  "transformPx": false,
+  "vueVersion": "3",
+  "app-plus": {
+    "usingComponents": true,
+    "distribute": {
+      "android": {
+        "permissions": ["<uses-permission android:name=\"android.permission.INTERNET\"/>"]
+      }
+    }
+  },
+  "app-harmony": {},
+  "h5": { "title": "老板批了", "router": { "mode": "hash" } }
+}

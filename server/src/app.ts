@@ -1,0 +1,21 @@
+import Fastify from 'fastify';
+import { openDatabase } from './infrastructure/database/index.js';
+import { healthModule } from './modules/health/index.js';
+import { registerErrorHandlers } from './http/errors.js';
+
+export function buildApp(options: { databasePath: string; logger?: boolean }) {
+  const app = Fastify({
+    logger: options.logger ? { redact: ['req.headers.authorization', 'req.headers.cookie'] } : false
+  });
+  const db = openDatabase(options.databasePath);
+
+  try {
+    app.addHook('onClose', async () => { db.close(); });
+    registerErrorHandlers(app);
+    app.register(healthModule, { db, prefix: '/api' });
+    return app;
+  } catch (error) {
+    db.close();
+    throw error;
+  }
+}

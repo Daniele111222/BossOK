@@ -1,0 +1,21 @@
+{
+  "name": "bossok",
+  "version": "0.1.0",
+  "private": true,
+  "engines": { "node": ">=24 <25" },
+  "workspaces": ["packages/contracts", "app", "server"],
+  "scripts": {
+    "dev:app": "npm run build:contracts && npm run dev:h5 --workspace @bossok/app",
+    "dev:server": "npm run build:contracts && npm run dev --workspace @bossok/server",
+    "build:contracts": "npm run build --workspace @bossok/contracts",
+    "build": "npm run build:contracts && npm run build --workspace @bossok/server && npm run build:h5 --workspace @bossok/app",
+    "build:app": "npm run build:contracts && npm run build:app --workspace @bossok/app",
+    "typecheck": "npm run build:contracts && npm run typecheck --workspaces && tsc -p tsconfig.test.json",
+    "test": "npm run build:contracts && npm run test --workspace @bossok/server",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3"
+  }
+}
