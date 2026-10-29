@@ -36,6 +36,16 @@ async function refresh() {
   if (!month.value) month.value = balance.value.budget.date.slice(0,7);
   if (pending.value?.kind === 'create') { const b = pending.value.body; amount.value=(b.amount/100).toFixed(2); purpose.value=b.purpose; reason.value=b.reason; category.value=b.category; }
   await load();
+  const messageId=uni.getStorageSync('open-message');
+  if(messageId) {
+    uni.removeStorageSync('open-message');
+    try {await openMessage(String(messageId));}
+    catch(error) {
+      if(!(error instanceof RequestError) || error.statusCode===0 || error.statusCode===401 || error.statusCode>=500) uni.setStorageSync('open-message',messageId);
+      throw error;
+    }
+    return;
+  }
   const openId = uni.getStorageSync('open-approval');
   if (openId) { uni.removeStorageSync('open-approval'); await show(String(openId)); }
   else if (pending.value && pending.value.kind !== 'create') await show(pending.value.id);
@@ -44,6 +54,14 @@ function input(): ApprovalInput {
   if (!purpose.value.trim() || !reason.value.trim()) throw new Error('请填写用途和申请原因');
   return { requestId: requestId(), amount: yuanToCents(amount.value), category: category.value, spentOn: balance.value!.budget.date, purpose: purpose.value, reason: reason.value };
 }
+async function openMessage(id:string) {
+ const m=await notifications.get(sessionToken(),id);
+ await notifications.read(sessionToken(),id);
+ if(m.kind==='approval' && m.approvalId) await show(m.approvalId);
+ else {uni.switchTab({url:'/pages/home/index'});}
+ messages.value=await notifications.list(sessionToken());
+}
+const deliveryNames={not_registered:'未登记设备或未开启',pending:'待投递',accepted:'推送服务已受理',failed:'投递失败，可重试',skipped:'已跳过投递'};
 async function show(id: string) {
   detail.value = await spending.approval(sessionToken(),id); opinion.value = ''; actualAmount.value = ''; actualDate.value = detail.value.approval.spentOn; actualNote.value = ''; cancelReason.value = '';
   const p = pending.value;
@@ -154,9 +172,9 @@ onShow(() => { void run(refresh); });
         <button :disabled="busy || list.page*list.pageSize>=list.total" @click="run(() => load(list!.page+1))">申请下一页</button>
       </template>
       <view v-if="messages" class="card">
-        <text class="description">应用内消息（共 {{ messages.total }} 条）；打开详情会重新查询状态。</text>
+        <text class="description">应用内消息（共 {{ messages.total }} 条，未读 {{ messages.unread }} 条）；打开详情会重新查询状态。</text>
         <text v-if="!messages.total" class="description">暂无消息</text>
-        <view v-for="m in messages.records" :key="m.id"><text class="description">{{ m.title }}</text><button :disabled="busy" @click="run(() => show(m.approvalId))">打开消息详情</button></view>
+        <view v-for="m in messages.records" :key="m.id"><text class="description">{{ m.readAt === null ? '未读 · ' : '已读 · ' }}{{ m.title }} · {{ deliveryNames[m.deliveryStatus] }}</text><button :disabled="busy" @click="run(() => openMessage(m.id))">打开消息详情</button></view>
         <button :disabled="busy || messages.page<=1" @click="run(() => loadMessages(messages!.page-1))">消息上一页</button>
         <button :disabled="busy || messages.page*messages.pageSize>=messages.total" @click="run(() => loadMessages(messages!.page+1))">消息下一页</button>
       </view>

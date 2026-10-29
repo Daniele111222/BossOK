@@ -14,9 +14,16 @@ export function readConfig(env: NodeJS.ProcessEnv) {
   const databasePath = (env.DATABASE_PATH ?? 'data/bossok.sqlite').trim();
   if (!databasePath) throw new Error('DATABASE_PATH 不能为空');
 
+  const pushUrl=env.PUSH_GATEWAY_URL?.trim(),pushToken=env.PUSH_GATEWAY_TOKEN?.trim();
+  if(!!pushUrl!==!!pushToken) throw new Error('PUSH_GATEWAY_URL 与 PUSH_GATEWAY_TOKEN 需同时配置');
+  if(pushUrl) {
+    const url=new URL(pushUrl);
+    if(url.protocol!=='https:' || url.username || url.password || url.hash || !pushToken || pushToken.length<32) throw new Error('PUSH_GATEWAY 需要 HTTPS 地址和至少32字符密钥');
+  }
   return {
     host,
     port,
+    ...(pushUrl && pushToken ? {pushGateway:{url:pushUrl,token:pushToken}} : {}),
     databasePath: databasePath === ':memory:' ? databasePath : resolve(serverRoot, databasePath)
   };
 }

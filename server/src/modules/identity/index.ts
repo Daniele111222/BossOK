@@ -102,6 +102,11 @@ export function createIdentity(db: Database.Database, now = Date.now) {
     if (!row) throw new HttpError(404, 'NOT_FOUND', '共享关系不存在');
     return role === 'approver' ? row.approver_id : row.applicant_id;
   }
-  return { authenticate, member, register, recipient };
+  function session(request: FastifyRequest) {
+    const actor=member(request),hash=digest(request.headers.authorization!.slice(7));
+    const row=db.prepare('SELECT expires_at FROM sessions WHERE token_hash=?').get(hash) as {expires_at:number};
+    return {actor,hash,expiresAt:row.expires_at};
+  }
+  return { authenticate, member, register, recipient, session };
 }
 export type IdentityService = ReturnType<typeof createIdentity>;

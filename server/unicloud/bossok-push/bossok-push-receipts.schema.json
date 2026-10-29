@@ -1,0 +1,6 @@
+{
+ "bsonType":"object",
+ "required":["cid","messageId","acceptedAt"],
+ "permission":{"read":false,"create":false,"update":false,"delete":false},
+ "properties":{"_id":{"bsonType":"string"},"cid":{"bsonType":"string"},"messageId":{"bsonType":"string"},"acceptedAt":{"bsonType":"long"}}
+}

@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { onLaunch } from '@dcloudio/uni-app';
+import {refreshDevicePush,listenForPush} from './application';
+import { onLaunch,onShow } from '@dcloudio/uni-app';
 
-onLaunch(() => { console.info('老板批了已启动'); });
+onLaunch(() => { listenForPush(); });
+onShow(() => { void refreshDevicePush().catch(()=>{}); });
 </script>
 
 <style>

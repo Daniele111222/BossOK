@@ -1,7 +1,7 @@
 import { monthlySummarySchema } from '@bossok/contracts';
 import { confirmBodySchema, cancelBodySchema, type ConfirmInput, type CancelInput } from '@bossok/contracts';
 import { createApprovals } from './approval.js';
-import { createNotifications } from '../notifications/index.js';
+import type { Notifications } from '../notifications/index.js';
 import { approvalBodySchema, approvalActionSchema, approvalSchema, approvalPageSchema, approvalDetailSchema, approvalPreviewSchema, type ApprovalInput, type ApprovalAction } from '@bossok/contracts';
 import { expenseChangeSchema, expenseEditSchema, refundBodySchema, expenseDetailSchema, type ExpenseChangeInput, type ExpenseEditInput, type RefundInput } from '@bossok/contracts';
 import { createLedger } from './ledger.js';
@@ -12,20 +12,26 @@ import { budgetBodySchema, budgetSnapshotSchema, dateSchema, type BudgetInput } 
 import type { IdentityService } from '../identity/index.js';
 import { createBudgets, businessDate, validDate } from './budget.js';
 
-export function registerSpending(app: FastifyInstance, db: Database.Database, identity: IdentityService, now = Date.now) {
+export function registerSpending(app: FastifyInstance, db: Database.Database, identity: IdentityService, notifications:Notifications, now = Date.now) {
   const budgets = createBudgets(db, now);
   const ledger = createLedger(db, budgets, now);
   app.get<{Querystring:{month:string}}>('/api/summary',{schema:{response:{200:monthlySummarySchema},querystring:{type:'object',additionalProperties:false,required:['month'],properties:{month:{type:'string',pattern:'^\\d{4}-\\d{2}$'}}}}},async request=>{
     const actor=identity.member(request);validDate(`${request.query.month}-01`,businessDate(now()));
     return ledger.summary(actor.relationshipId,request.query.month);
   });
-  const notifications = createNotifications(db, now);
-  notifications.register(app, identity);
+  function mutate<T>(relationshipId:string,dates:string[],action:()=>T):T {
+    return db.transaction(()=>{
+      const result=action();
+      const recipients=[identity.recipient(relationshipId,'applicant'),identity.recipient(relationshipId,'approver')];
+      for(const date of new Set(dates)) notifications.thresholds(recipients,date,ledger.balances(relationshipId,date));
+      return result;
+    })();
+  }
   const approvals = createApprovals(db, ledger, (relationshipId,role,id,title) => notifications.write(identity.recipient(relationshipId,role),id,title), now);
   app.post<{ Params: { id: string }; Body: ConfirmInput }>('/api/approvals/:id/confirm', { schema: { body: confirmBodySchema, response: { 200: approvalSchema } } }, async request => {
     const actor = identity.member(request,'applicant');
     validDate(request.body.spentOn,businessDate(now()));
-    return approvals.consume(actor.relationshipId,actor.id,request.params.id,request.body,'confirm');
+    return mutate(actor.relationshipId,[request.body.spentOn],()=>approvals.consume(actor.relationshipId,actor.id,request.params.id,request.body,'confirm'));
   });
   app.post<{ Params: { id: string }; Body: CancelInput }>('/api/approvals/:id/cancel', { schema: { body: cancelBodySchema, response: { 200: approvalSchema } } }, async request => {
     const actor = identity.member(request,'applicant');
@@ -55,7 +61,8 @@ export function registerSpending(app: FastifyInstance, db: Database.Database, id
       const actor = identity.member(request, 'applicant');
       if ('spentOn' in request.body) validDate(request.body.spentOn, businessDate(now()));
       if ('refundedOn' in request.body) validDate(request.body.refundedOn, businessDate(now()));
-      return ledger.change(actor.relationshipId, actor.id, request.params.id, kind, request.body);
+      const before=ledger.get(actor.relationshipId,request.params.id);
+      return mutate(actor.relationshipId,[before.spentOn,...('spentOn' in request.body?[request.body.spentOn]:[])],()=>ledger.change(actor.relationshipId, actor.id, request.params.id, kind, request.body));
     });
   }
   app.get('/api/balances', { schema: { response: { 200: balancesSchema } } }, async request => {
@@ -65,7 +72,7 @@ export function registerSpending(app: FastifyInstance, db: Database.Database, id
   app.post<{ Body: ExpenseInput }>('/api/expenses', { schema: { body: expenseBodySchema, response: { 200: expenseSchema } } }, async request => {
     const actor = identity.member(request, 'applicant');
     validDate(request.body.spentOn, businessDate(now()));
-    return ledger.create(actor.relationshipId, actor.id, request.body);
+    return mutate(actor.relationshipId,[request.body.spentOn],()=>ledger.create(actor.relationshipId, actor.id, request.body));
   });
   app.get<{ Querystring: { month: string; category?: string; page?: number; pageSize?: number } }>('/api/expenses', { schema: {
     response: { 200: ledgerPageSchema },
@@ -83,6 +90,6 @@ export function registerSpending(app: FastifyInstance, db: Database.Database, id
   });
   app.post<{ Body: BudgetInput }>('/api/budget', { schema: { body: budgetBodySchema, response: { 200: budgetSnapshotSchema } } }, async request => {
     const actor = identity.member(request, 'approver');
-    return budgets.save(actor.relationshipId, actor.id, request.body);
+    return mutate(actor.relationshipId,[businessDate(now())],()=>budgets.save(actor.relationshipId, actor.id, request.body));
   });
 }

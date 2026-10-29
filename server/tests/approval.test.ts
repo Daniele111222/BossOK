@@ -23,8 +23,8 @@ it('超支申请只一份，批准占完整承诺且不扣实际支出，消息�
     expect(balance.budget.daily.amount).toBe(8000);
     const expense = (await f.app.inject({url:'/api/expenses?month=2026-10',headers:f.self})).json().records[0];
     expect((await post(`/api/expenses/${expense.id}/update`,{requestId:'commitment-edit-001',version:1,amount:6600,category:'餐饮',spentOn:'2026-10-23',note:'',reason:'更正'})).json().unapproved).toBe(true);
-    expect((await f.app.inject({ url: '/api/messages', headers: f.boss })).json().records).toHaveLength(1);
-    expect((await f.app.inject({ url: '/api/messages', headers: f.self })).json().records[0].approvalId).toBe(approval.id);
+    expect((await f.app.inject({ url: '/api/messages', headers: f.boss })).json().records.filter((m:{kind:string})=>m.kind==='approval')).toHaveLength(1);
+    expect((await f.app.inject({ url: '/api/messages', headers: f.self })).json().records.find((m:{kind:string})=>m.kind==='approval').approvalId).toBe(approval.id);
     expect((await f.app.inject({ url: '/api/approvals?month=2026-10', headers: f.self })).json()).toEqual((await f.app.inject({ url: '/api/approvals?month=2026-10', headers: f.boss })).json());
     f.setDate('2026-10-23T16:00:00Z');
     expect((await f.app.inject({ url: `/api/approvals/${approval.id}`, headers: f.self })).json().approval.status).toBe('expired');

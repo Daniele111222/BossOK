@@ -165,15 +165,16 @@ export interface ApprovalEvent { action: string; opinion: string; actorId: strin
 export interface ApprovalPage { records: Approval[]; total: number; page: number; pageSize: number }
 export interface ApprovalDetail extends ApprovalPreview { approval: Approval; expense: Expense | null; history: ApprovalEvent[]; balances: Balances }
 export interface ApprovalPreview { dailyOver: number; monthlyOver: number; balances: Balances }
-export interface Message { id: string; approvalId: string; title: string; createdAt: number }
-export interface MessagePage { records: Message[]; total: number; page: number; pageSize: number }
+export interface Message { id: string; approvalId: string | null; title: string; createdAt: number; kind: 'approval' | 'budget'; scope: 'daily' | 'monthly' | null; period: string | null; threshold: 80 | 100 | null; readAt: number | null; deliveryStatus: 'not_registered' | 'pending' | 'accepted' | 'failed' | 'skipped' }
+export interface MessagePage { records: Message[]; total: number; page: number; pageSize: number; unread: number }
 export const approvalBodySchema = { type: 'object', additionalProperties: false, required: ['requestId','amount','category','spentOn','purpose','reason'], properties: { requestId: expenseBodySchema.properties.requestId, amount: amountSchema, category: { enum: categories }, spentOn: dateSchema, purpose: { type: 'string', minLength: 1, maxLength: 100 }, reason: { type: 'string', minLength: 1, maxLength: 300 } } } as const;
 export const approvalActionSchema = { type: 'object', additionalProperties: false, required: ['requestId','action','opinion'], properties: { requestId: expenseBodySchema.properties.requestId, action: { enum: ['approve','reject','withdraw'] }, opinion: { type: 'string', maxLength: 300 } } } as const;
 export const approvalSchema = { type: 'object', additionalProperties: false, required: [...approvalBodySchema.required,'id','status','opinion','dailyOver','monthlyOver','createdAt','approvedAt','expiredFrom','kind','expenseId','expenseVersion'], properties: { ...approvalBodySchema.properties, id: { type: 'string' }, status: { enum: ['pending','approved','rejected','withdrawn','expired','consumed','cancelled'] }, opinion: { type: 'string' }, dailyOver: { type: 'integer' }, monthlyOver: { type: 'integer' }, createdAt: { type: 'integer' }, approvedAt: { type: ['integer','null'] }, expiredFrom: { type: ['string','null'] }, kind: { enum: ['purchase','supplement'] }, expenseId: { type: ['string','null'] }, expenseVersion: { type: ['integer','null'] } } } as const;
 export const approvalPageSchema = { type: 'object', required: ['records','total','page','pageSize'], properties: { records: { type: 'array', items: approvalSchema }, total: { type: 'integer' }, page: { type: 'integer' }, pageSize: { type: 'integer' } } } as const;
 export const approvalPreviewSchema = { type: 'object', required: ['dailyOver','monthlyOver','balances'], properties: { dailyOver: { type: 'integer' }, monthlyOver: { type: 'integer' }, balances: balancesSchema } } as const;
 export const approvalDetailSchema = { type: 'object', required: ['approval','expense','history','balances','dailyOver','monthlyOver'], properties: { approval: approvalSchema, expense: { anyOf: [expenseSchema, { type: 'null' }] }, dailyOver: { type: 'integer' }, monthlyOver: { type: 'integer' }, balances: balancesSchema, history: { type: 'array', items: { type: 'object', required: ['action','opinion','actorId','createdAt'], properties: { action: { type: 'string' }, opinion: { type: 'string' }, actorId: { type: ['string','null'] }, createdAt: { type: 'integer' } } } } } } as const;
-export const messagePageSchema = { type: 'object', required: ['records','total','page','pageSize'], properties: { records: { type: 'array', items: { type: 'object', required: ['id','approvalId','title','createdAt'], properties: { id: { type: 'string' }, approvalId: { type: 'string' }, title: { type: 'string' }, createdAt: { type: 'integer' } } } }, total: { type: 'integer' }, page: { type: 'integer' }, pageSize: { type: 'integer' } } } as const;
+export const messageSchema = {type:'object',additionalProperties:false,required:['id','approvalId','title','createdAt','kind','scope','period','threshold','readAt','deliveryStatus'],properties:{id:{type:'string'},approvalId:{type:['string','null']},title:{type:'string'},createdAt:{type:'integer'},kind:{enum:['approval','budget']},scope:{enum:['daily','monthly',null]},period:{type:['string','null']},threshold:{enum:[80,100,null]},readAt:{type:['integer','null']},deliveryStatus:{enum:['not_registered','pending','accepted','failed','skipped']}}} as const;
+export const messagePageSchema = {type:'object',required:['records','total','page','pageSize','unread'],properties:{records:{type:'array',items:messageSchema},total:{type:'integer'},page:{type:'integer'},pageSize:{type:'integer'},unread:{type:'integer'}}} as const;
 export function isApproval(value: unknown): value is Approval {
   const v = value as Approval | null;
   return !!v && typeof v.id === 'string' && typeof v.requestId === 'string' && Number.isSafeInteger(v.amount) && v.amount > 0 && categories.includes(v.category) && typeof v.spentOn === 'string' && typeof v.purpose === 'string' && typeof v.reason === 'string' && ['pending','approved','rejected','withdrawn','expired','consumed','cancelled'].includes(v.status) && typeof v.opinion === 'string' && Number.isSafeInteger(v.dailyOver) && Number.isSafeInteger(v.monthlyOver) && Number.isSafeInteger(v.createdAt) && (v.approvedAt === null || Number.isSafeInteger(v.approvedAt)) && (v.expiredFrom === null || typeof v.expiredFrom === 'string') && (v.kind === 'purchase' || v.kind === 'supplement') && (v.expenseId === null || typeof v.expenseId === 'string') && (v.expenseVersion === null || Number.isInteger(v.expenseVersion));
@@ -190,9 +191,20 @@ export function isApprovalDetail(value: unknown): value is ApprovalDetail {
   const v = value as ApprovalDetail | null;
   return !!v && isApproval(v.approval) && (v.expense === null || isExpense(v.expense)) && isApprovalPreview(v) && Array.isArray(v.history) && v.history.every(e => !!e && typeof e === 'object' && typeof e.action === 'string' && typeof e.opinion === 'string' && (e.actorId === null || typeof e.actorId === 'string') && Number.isSafeInteger(e.createdAt));
 }
+export function isMessage(value: unknown): value is Message {
+ const m=value as Message|null;
+ return !!m && typeof m.id==='string' && (m.approvalId===null || typeof m.approvalId==='string') && typeof m.title==='string' && Number.isSafeInteger(m.createdAt) && ['approval','budget'].includes(m.kind) && (m.scope===null || ['daily','monthly'].includes(m.scope)) && (m.period===null || typeof m.period==='string') && [null,80,100].includes(m.threshold) && (m.readAt===null || Number.isSafeInteger(m.readAt)) && ['not_registered','pending','accepted','failed','skipped'].includes(m.deliveryStatus);
+}
 export function isMessagePage(value: unknown): value is MessagePage {
-  const v = value as MessagePage | null;
-  return !!v && Array.isArray(v.records) && v.records.every(m => !!m && typeof m === 'object' && typeof m.id === 'string' && typeof m.approvalId === 'string' && typeof m.title === 'string' && Number.isSafeInteger(m.createdAt)) && Number.isInteger(v.total) && Number.isInteger(v.page) && Number.isInteger(v.pageSize);
+ const v=value as MessagePage|null;
+ return !!v && Array.isArray(v.records) && v.records.every(isMessage) && [v.total,v.page,v.pageSize,v.unread].every(Number.isSafeInteger);
+}
+export interface NotificationPreferences {pushEnabled:boolean;pushConfigured:boolean}
+export const notificationPreferencesSchema={type:'object',required:['pushEnabled','pushConfigured'],properties:{pushEnabled:{type:'boolean'},pushConfigured:{type:'boolean'}}} as const;
+export const notificationPreferenceBodySchema={type:'object',additionalProperties:false,required:['pushEnabled'],properties:{pushEnabled:{type:'boolean'}}} as const;
+export const deviceBodySchema={type:'object',additionalProperties:false,required:['cid','enabled'],properties:{cid:{type:'string',minLength:8,maxLength:128,pattern:'^[a-zA-Z0-9_-]+$'},enabled:{type:'boolean'}}} as const;
+export function isNotificationPreferences(value:unknown):value is NotificationPreferences {
+ const v=value as NotificationPreferences|null;return !!v && typeof v.pushEnabled==='boolean' && typeof v.pushConfigured==='boolean';
 }
 
 export interface ConfirmInput { requestId: string; amount: number; spentOn: string; note: string }

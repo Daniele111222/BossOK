@@ -2,7 +2,7 @@
 import { ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import type { BudgetSnapshot, Balances, Identity } from '@bossok/contracts';
-import { currentUser, spending, sessionToken } from '../../application';
+import { currentUser, spending, sessionToken,openPendingPushMessage } from '../../application';
 const balance = ref<Balances | null>(null);
 const budget = ref<BudgetSnapshot | null>(null), user = ref<Identity | null>(null), message = ref(''), busy = ref(false);
 async function refresh() {
@@ -14,7 +14,7 @@ async function refresh() {
 function ledger() { uni.switchTab({ url: '/pages/ledger/index' }); }
 function approvals() { uni.switchTab({ url: '/pages/approval/index' }); }
 function profile() { uni.switchTab({ url: '/pages/profile/index' }); }
-onShow(() => { void refresh(); });
+onShow(() => { if(!openPendingPushMessage()) void refresh(); });
 </script>
 <template>
   <view class="page">

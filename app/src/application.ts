@@ -1,3 +1,4 @@
+import {getPushClientId,listenPush,nativePushAvailable,notificationAllowed} from './platform/push';
 import { createNotificationsClient } from './features/notifications/index';
 import { createSpendingClient } from "./features/spending/index";
 
@@ -24,3 +25,34 @@ export async function currentUser() {
 export const spending = createSpendingClient(request);
 
 export const notifications = createNotificationsClient(request);
+
+export async function enableDevicePush() {
+ const token=sessionToken();await currentUser();
+ const cid=await getPushClientId();
+ await notifications.device(token,cid,notificationAllowed());
+ uni.setStorageSync('push-consent',true);
+ listenForPush();
+}
+let listening=false;
+export function listenForPush() {
+ if(listening || !nativePushAvailable() || !uni.getStorageSync('push-consent')) return;
+ listening=true;
+ listenPush(id=>{
+  if(id) uni.setStorageSync('open-message',id);
+  uni.switchTab({url:'/pages/approval/index'});
+ });
+}
+export async function refreshDevicePush() {
+ if(!nativePushAvailable() || !sessionToken() || !uni.getStorageSync('push-consent')) return;
+ await currentUser();
+ const prefs=await notifications.preferences(sessionToken());
+ if(prefs.pushEnabled) {
+  await notifications.device(sessionToken(),await getPushClientId(),notificationAllowed());
+  listenForPush();
+ }
+}
+
+export function openPendingPushMessage() {
+ if(!uni.getStorageSync('open-message')) return false;
+ uni.switchTab({url:'/pages/approval/index',fail:()=>uni.showToast({title:'打开提醒失败，请从审批页重试',icon:'none'})});return true;
+}
