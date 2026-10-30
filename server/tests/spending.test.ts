@@ -155,3 +155,22 @@ it('变更历史写入失败时账目和额度一起回滚', async () => {
     expect(detail.expense).toMatchObject({ deletedAt: null, version: 1 }); expect(detail.changes).toEqual([]);
   } finally { await f.close(); }
 });
+
+
+it('账本月份合计覆盖全部分页，遵守分类筛选并扣除退款及删除', async () => {
+  const f = await fixture();
+  try {
+    const create = async (id: string, amount: number, category = '餐饮', spentOn = '2026-10-23') => (await f.app.inject({ method: 'POST', url: '/api/expenses', headers: f.self, payload: { requestId: id, amount, category, spentOn, note: '' } })).json();
+    const meal = await create('sum-meal-01', 3000);
+    const deleted = await create('sum-meal-02', 1000);
+    await create('sum-travel-01', 2000, '交通');
+    await create('sum-last-month', 9000, '餐饮', '2026-09-23');
+    await f.app.inject({ method: 'POST', url: `/api/expenses/${meal.id}/refunds`, headers: f.self, payload: { requestId: 'sum-refund-01', version: meal.version, reason: '测试退款', amount: 500, refundedOn: '2026-10-23' } });
+    await f.app.inject({ method: 'POST', url: `/api/expenses/${deleted.id}/delete`, headers: f.self, payload: { requestId: 'sum-delete-01', version: deleted.version, reason: '测试删除' } });
+    const get = async (query: string) => (await f.app.inject({ url: `/api/expenses?month=2026-10&pageSize=1&${query}`, headers: f.self })).json();
+    expect(await get('page=1')).toMatchObject({ total: 3, totalAmount: 4500 });
+    expect(await get('page=2')).toMatchObject({ total: 3, totalAmount: 4500 });
+    expect(await get('category=餐饮')).toMatchObject({ total: 2, totalAmount: 2500 });
+    expect(await get('category=购物')).toMatchObject({ total: 0, totalAmount: 0 });
+  } finally { await f.close(); }
+});

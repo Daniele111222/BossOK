@@ -115,7 +115,7 @@ export const budgetSnapshotSchema = {
 
 export interface ExpenseInput { requestId: string; amount: number; category: Category; spentOn: string; note: string }
 export interface Expense extends ExpenseInput { id: string; createdAt: number; budgetApplicable: boolean; unapproved: boolean; version: number; deletedAt: number | null; refunded: number; approvalId: string | null; unapprovedAmount: number }
-export interface LedgerPage { records: Expense[]; total: number; page: number; pageSize: number }
+export interface LedgerPage { records: Expense[]; totalAmount: number; total: number; page: number; pageSize: number }
 export interface Balances { budget: BudgetSnapshot; dailySpent: number; monthlySpent: number; dailyRemaining: number | null; monthlyRemaining: number | null; dailyCommitted: number; monthlyCommitted: number; dailyAvailable: number | null; monthlyAvailable: number | null }
 export const expenseBodySchema = {
   type: 'object', additionalProperties: false, required: ['requestId', 'amount', 'category', 'spentOn', 'note'],
@@ -125,7 +125,7 @@ export const expenseSchema = { type: 'object', additionalProperties: false,
   required: [...expenseBodySchema.required, 'id', 'createdAt', 'budgetApplicable', 'unapproved', 'version', 'deletedAt', 'refunded', 'approvalId', 'unapprovedAmount'],
   properties: { ...expenseBodySchema.properties, id: { type: 'string' }, createdAt: { type: 'integer' }, budgetApplicable: { type: 'boolean' }, unapproved: { type: 'boolean' }, version: { type: 'integer' }, deletedAt: { type: ['integer', 'null'] }, refunded: { type: 'integer' }, approvalId: { type: ['string','null'] }, unapprovedAmount: { type: 'integer' } }
 } as const;
-export const ledgerPageSchema = { type: 'object', required: ['records','total','page','pageSize'], properties: { records: { type: 'array', items: expenseSchema }, total: { type: 'integer' }, page: { type: 'integer' }, pageSize: { type: 'integer' } } } as const;
+export const ledgerPageSchema = { type: 'object', required: ['records','totalAmount','total','page','pageSize'], properties: { records: { type: 'array', items: expenseSchema }, totalAmount: { type: 'integer' }, total: { type: 'integer' }, page: { type: 'integer' }, pageSize: { type: 'integer' } } } as const;
 export const balancesSchema = { type: 'object', required: ['budget', 'dailySpent', 'monthlySpent', 'dailyRemaining', 'monthlyRemaining', 'dailyCommitted', 'monthlyCommitted', 'dailyAvailable', 'monthlyAvailable'], properties: { budget: budgetSnapshotSchema, dailySpent: { type: 'integer' }, monthlySpent: { type: 'integer' }, dailyRemaining: { type: ['integer', 'null'] }, monthlyRemaining: { type: ['integer', 'null'] }, dailyCommitted: { type: 'integer' }, monthlyCommitted: { type: 'integer' }, dailyAvailable: { type: ['integer','null'] }, monthlyAvailable: { type: ['integer','null'] } } } as const;
 export function isExpense(value: unknown): value is Expense {
   const v = value as Expense | null;
@@ -134,7 +134,7 @@ export function isExpense(value: unknown): value is Expense {
 }
 export function isLedgerPage(value: unknown): value is LedgerPage {
   const v = value as LedgerPage | null;
-  return !!v && Array.isArray(v.records) && v.records.every(isExpense) && Number.isInteger(v.total) && Number.isInteger(v.page) && Number.isInteger(v.pageSize);
+  return !!v && Array.isArray(v.records) && v.records.every(isExpense) && Number.isSafeInteger(v.totalAmount) && Number.isInteger(v.total) && Number.isInteger(v.page) && Number.isInteger(v.pageSize);
 }
 export function isBalances(value: unknown): value is Balances {
   const v = value as Balances | null;

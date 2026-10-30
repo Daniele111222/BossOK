@@ -67,10 +67,10 @@ export function createLedger(db: Database.Database, budgets: ReturnType<typeof c
   function list(relationshipId: string, month: string, category: string | undefined, page: number, pageSize: number) {
     const where = ' WHERE relationship_id=? AND substr(spent_on,1,7)=?' + (category ? ' AND category=?' : '');
     const args = category ? [relationshipId, month, category] : [relationshipId, month];
-    const { total } = db.prepare(`SELECT count(*) AS total FROM expenses${where}`).get(...args) as { total: number };
+    const { total, totalAmount } = db.prepare(`SELECT count(*) AS total, COALESCE(sum(CASE WHEN deleted_at IS NULL THEN amount-COALESCE((SELECT sum(refund_amount) FROM expense_changes WHERE expense_id=expenses.id),0) ELSE 0 END),0) AS totalAmount FROM expenses${where}`).get(...args) as { total: number; totalAmount: number };
     const startDate = budgets.snapshot(relationshipId, `${month}-01`).startDate;
     const records = (db.prepare(`${select}${where} ORDER BY spent_on DESC,created_at DESC,id DESC LIMIT ? OFFSET ?`).all(...args, pageSize, (page-1)*pageSize) as Expense[]).map(row => dto(row, startDate));
-    return { records, total, page, pageSize };
+    return { records, totalAmount, total, page, pageSize };
   }
   function get(relationshipId: string, id: string) {
     const row = db.prepare(`${select} WHERE relationship_id=? AND id=?`).get(relationshipId, id) as Expense | undefined;
