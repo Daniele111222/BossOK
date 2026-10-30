@@ -37,55 +37,29 @@ async function bind() { user.value = await identity.bind(sessionToken(), code.va
 </script>
 <template>
   <view class="page">
-    <text class="title">我的</text>
+    <view class="page-header"><view class="header-copy"><text class="title">我的</text><text class="subtitle">账户、伙伴与约定</text></view></view>
+    <text v-if="message" role="alert" class="notice">{{ message }}</text>
     <template v-if="!user">
-      <input v-model="username" aria-label="账号" placeholder="管理员创建的账号" maxlength="64" />
-      <input v-model="password" aria-label="密码" placeholder="密码" password maxlength="128" />
-      <button :disabled="busy" @click="run(login)">登录</button>
+      <view class="login-hero"><text class="brand">老板<text class="brand-accent">批了</text></text><text class="description">一个人记账，一个人把关。
+花得明白，也不互相为难。</text></view>
+      <view class="card"><text class="card-title">登录你的账户</text><text class="field-label">账号</text><input class="input" v-model="username" aria-label="账号" placeholder="管理员创建的账号" maxlength="64" :disabled="busy" /><text class="field-label">密码</text><input class="input" v-model="password" aria-label="密码" placeholder="请输入密码" password maxlength="128" :disabled="busy" /><button role="button" class="btn primary" :disabled="busy" @click="run(login)">{{ busy ? '正在登录…' : '登录' }}</button><text class="caption" style="margin-top:12px">账户由管理员创建，请使用自己的账号和密码登录。</text></view>
     </template>
     <template v-else>
-      <text class="description">{{ user.username }} · {{ user.role === 'approver' ? '审批人' : '申请人' }}</text>
-      <text class="description">{{ user.relationshipId ? '已绑定，共享预算与全部应用内账目及变更' : '尚未绑定' }}</text>
-      <template v-if="!user.relationshipId">
-        <button v-if="user.role === 'approver'" :disabled="busy" @click="run(invite)">生成邀请码</button>
-        <text v-if="user.role === 'approver'" selectable class="description">{{ code }}</text>
-        <input v-else v-model="code" aria-label="邀请码" placeholder="邀请码" maxlength="64" />
-        <template v-if="user.role === 'applicant'">
-          <text class="description">绑定后审批人可查看你的全部应用内账目与变更，不能代替你修改。第一版不支持解绑或换绑。</text>
-          <checkbox-group @change="accepted = $event.detail.value.includes('sharing')"><label><checkbox value="sharing" :checked="accepted" />我已阅读并同意共享</label></checkbox-group>
-          <button :disabled="busy || !accepted" @click="run(bind)">接受并绑定</button>
-        </template>
+      <view class="card"><view class="row"><view class="cat-icon avatar"><image class="icon" src="/static/icons/user.svg" /></view><view class="grow"><view class="row"><text class="section-title">{{ user.username }}</text><text class="tag tag-green">{{ user.role === 'approver' ? '老板 · 审批人' : '小弟 · 申请人' }}</text></view><text class="caption">{{ user.relationshipId ? '已绑定 · 和伙伴一起安排预算' : '尚未绑定伙伴' }}</text></view></view></view>
+      <view class="section-head"><text class="section-title">伙伴绑定</text></view>
+      <view class="card"><view class="row between"><text class="row-title">{{ user.relationshipId ? '已和伙伴绑定' : '还没绑定伙伴' }}</text><text class="tag" :class="{'tag-green': user.relationshipId}">{{ user.relationshipId ? '已绑定' : '未绑定' }}</text></view><text class="description">共享预算、应用内账目、超支申请及变更记录。</text>
+        <template v-if="!user.relationshipId"><button role="button" class="btn" v-if="user.role === 'approver'" :disabled="busy" @click="run(invite)">生成邀请码</button><text v-if="user.role === 'approver' && code" selectable class="notice notice-green">{{ code }}</text><template v-if="user.role === 'applicant'"><text class="field-label">伙伴的邀请码</text><input class="input" v-model="code" aria-label="邀请码" placeholder="请输入邀请码" maxlength="64" :disabled="busy" /><text class="description">绑定后审批人可查看你的全部应用内账目与变更，不能代替你修改。第一版不支持解绑或换绑。</text><checkbox-group class="checkbox-group" @change="accepted = $event.detail.value.includes('sharing')"><label class="checkbox-label"><checkbox class="checkbox" value="sharing" :checked="accepted" color="#1f5c46" :disabled="busy" />我已阅读并同意共享</label></checkbox-group><button role="button" class="btn primary" :disabled="busy || !accepted" @click="run(bind)">接受并绑定</button></template></template>
+        <text v-else class="caption" style="margin-top:10px">双方共享全部应用内账目及变更。第一版不支持解绑或换绑。</text>
+      </view>
+      <template v-if="user.relationshipId && budget">
+        <view class="section-head"><text class="section-title">预算约定</text><text v-if="user.role !== 'approver'" class="tag">只读</text></view>
+        <view class="card"><view class="row"><view class="cat-icon"><image class="icon" src="/static/icons/wallet.svg" /></view><view class="grow"><text class="row-title">日额度与月预算</text><text class="caption">首月不折算，下月沿用，不结转</text></view></view><view class="stats"><view class="stat"><text class="stat-label">当前日额度</text><text class="stat-value">{{ budget.daily ? '¥'+(budget.daily.amount/100).toFixed(2) : '未设置' }}</text></view><view class="stat"><text class="stat-label">当前月预算</text><text class="stat-value">{{ budget.monthly ? '¥'+(budget.monthly.amount/100).toFixed(2) : '未设置' }}</text></view></view>
+          <template v-if="user.role === 'approver'"><text class="field-label">日额度（元）</text><input class="input" v-model="daily" aria-label="日额度" placeholder="留空保留当前额度" type="digit" :disabled="busy" /><text class="field-label">月预算（元）</text><input class="input" v-model="monthly" aria-label="月预算" placeholder="留空保留当前预算" type="digit" :disabled="busy" /><text class="field-label">计入日额度的分类</text><text class="caption">全部分类均计入月预算</text><checkbox-group class="checkbox-group" @change="selected = $event.detail.value as Category[]"><label class="checkbox-label" v-for="c in categories" :key="c"><checkbox class="checkbox" :value="c" :checked="selected.includes(c)" color="#1f5c46" :disabled="busy" />{{ c }}</label></checkbox-group><text class="field-label">调整原因<text class="required">*</text></text><input class="input" v-model="reason" aria-label="修改原因" placeholder="说说这次调整的原因" maxlength="300" :disabled="busy" /><text class="caption">首次当日生效；日额度及分类后续调整次日生效；月预算立即生效。</text><button role="button" class="btn primary" :disabled="busy" @click="run(saveBudget)">保存预算</button></template>
+        </view>
+        <view class="section-head"><text class="section-title">预算调整记录</text></view><view class="card"><text v-if="!budget.history.length" class="description">还没有预算调整记录</text><view v-for="v in budget.history" :key="v.id" class="history-item"><view class="row between"><text class="row-title">{{ v.kind === 'daily' ? '日额度' : '月预算' }}</text><text class="number">¥{{ (v.amount/100).toFixed(2) }}</text></view><text class="caption">{{ v.effectiveDate }} 生效 · {{ v.reason }}</text><text v-if="v.kind === 'daily'" class="caption">计日分类：{{ v.categories.join('、') || '无' }}</text><text class="caption">{{ new Date(v.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) }} 上海时间</text></view></view>
       </template>
-      <view v-if="user.relationshipId && budget" class="card">
-        <text class="description">预算历史（金额为元，首月不折算，下月沿用不结转）</text>
-        <text v-for="v in budget.history" :key="v.id" class="description">{{ v.kind === 'daily' ? '日额度' : '月预算' }} {{ (v.amount/100).toFixed(2) }} · {{ v.effectiveDate }} 生效 · {{ v.reason }} {{ v.kind === 'daily' ? ' · 计日分类：' + (v.categories.join('、') || '无') : '' }} · {{ new Date(v.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) }} 上海时间</text>
-        <template v-if="user.role === 'approver'">
-          <input v-model="daily" aria-label="日额度" placeholder="日额度（元），留空保留" type="digit" />
-          <input v-model="monthly" aria-label="月预算" placeholder="月预算（元），留空保留" type="digit" />
-          <text class="description">计入日额度的分类（全部分类均计月预算）</text>
-          <checkbox-group @change="selected = $event.detail.value as Category[]">
-            <label v-for="c in categories" :key="c"><checkbox :value="c" :checked="selected.includes(c)" />{{ c }}</label>
-          </checkbox-group>
-          <input v-model="reason" aria-label="修改原因" placeholder="设置/修改原因（必填）" maxlength="300" />
-          <text class="description">首次当日生效；日额度/分类后续调整次日生效；月预算立即生效。</text>
-          <button :disabled="busy" @click="run(saveBudget)">保存预算</button>
-        </template>
-      </view>
-      <view v-if="user.relationshipId && preferences" class="card">
-        <text class="description">消息提醒</text>
-        <text class="description">日/月实际支出达到80%、100%各提醒一次；反复改单不重复，批准未消费不触发。</text>
-        <text class="description">应用内消息始终保留；系统推送{{ preferences.pushEnabled ? '已开启偏好' : '已关闭偏好' }}。</text>
-        <text class="description">{{ permission }}；{{ preferences.pushConfigured ? '服务端投递已配置' : '服务端投递尚未配置' }}</text>
-        <button :disabled="busy" @click="run(togglePush)">{{ preferences.pushEnabled ? '关闭系统推送' : '开启系统推送偏好' }}</button>
-        <template v-if="nativePushAvailable() && preferences.pushEnabled">
-          <text class="description">启用本机提醒将获取推送标识并与当前登录会话关联；退出或会话失效后停止投递。系统权限由你在设置中控制。</text>
-          <button :disabled="busy" @click="run(enablePush)">同意并启用本机系统提醒</button>
-          <button :disabled="busy" @click="openSettings">打开系统通知设置</button>
-        </template>
-        <button :disabled="busy" @click="run(retryNotifications)">重试我的失败通知</button>
-      </view>
-      <button :disabled="busy" @click="run(logout)">退出登录</button>
+      <template v-if="user.relationshipId && preferences"><view class="section-head"><text class="section-title">消息提醒</text></view><view class="card"><view class="row"><view class="cat-icon"><image class="icon" src="/static/icons/bell.svg" /></view><view class="grow"><text class="row-title">系统推送</text><text class="caption">{{ preferences.pushEnabled ? '已开启偏好' : '已关闭偏好' }} · 应用内消息始终保留</text></view></view><text class="description" style="margin-top:12px">日/月实际支出达到 80%、100% 各提醒一次；反复改单不重复，批准未消费不触发。</text><text class="caption">{{ permission }}；{{ preferences.pushConfigured ? '服务端投递已配置' : '服务端投递尚未配置' }}</text><button role="button" class="btn" :disabled="busy" @click="run(togglePush)">{{ preferences.pushEnabled ? '关闭系统推送' : '开启系统推送偏好' }}</button><template v-if="nativePushAvailable() && preferences.pushEnabled"><text class="notice">启用本机提醒将获取推送标识并与当前登录会话关联；退出或会话失效后停止投递。系统权限由你在设置中控制。</text><button role="button" class="btn" :disabled="busy" @click="run(enablePush)">同意并启用本机系统提醒</button><button role="button" class="btn" :disabled="busy" @click="openSettings">打开系统通知设置</button></template><button role="button" class="btn" :disabled="busy" @click="run(retryNotifications)">重试我的失败通知</button></view></template>
+      <button role="button" class="btn danger" :disabled="busy" @click="run(logout)">退出登录</button>
     </template>
-    <text role="alert" class="description">{{ message }}</text>
   </view>
 </template>
