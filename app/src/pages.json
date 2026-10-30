@@ -1,26 +1,32 @@
 {
   "pages": [
-    { "path": "pages/home/index", "style": { "navigationBarTitleText": "老板批了" } },
-    { "path": "pages/ledger/index", "style": { "navigationBarTitleText": "账本" } },
-    { "path": "pages/approval/index", "style": { "navigationBarTitleText": "审批" } },
-    { "path": "pages/summary/index", "style": { "navigationBarTitleText": "月度汇总" } },
-    { "path": "pages/profile/index", "style": { "navigationBarTitleText": "我的" } }
+    {"path": "pages/home/index", "style": {"navigationBarTitleText": "老板批了"}},
+    {"path": "pages/ledger/index", "style": {"navigationBarTitleText": "账本"}},
+    {"path": "pages/approval/index", "style": {"navigationBarTitleText": "审批"}},
+    {"path": "pages/summary/index", "style": {"navigationBarTitleText": "月度汇总"}},
+    {"path": "pages/profile/index", "style": {"navigationBarTitleText": "我的"}}
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarBackgroundColor": "#ffffff",
-    "backgroundColor": "#f5f7f6"
+    "navigationBarBackgroundColor": "#F4F0E6",
+    "backgroundColor": "#F4F0E6",
+    "navigationStyle": "custom"
   },
   "tabBar": {
-    "color": "#596579",
-    "selectedColor": "#21654f",
-    "backgroundColor": "#ffffff",
+    "color": "#7C877F",
+    "selectedColor": "#1F5C46",
+    "backgroundColor": "#FFFDF7",
+    "borderStyle": "white",
+    "height": "64px",
+    "fontSize": "11px",
+    "iconWidth": "22px",
+    "spacing": "4px",
     "list": [
-      { "pagePath": "pages/home/index", "text": "首页" },
-      { "pagePath": "pages/ledger/index", "text": "账本" },
-      { "pagePath": "pages/approval/index", "text": "审批" },
-      { "pagePath": "pages/summary/index", "text": "月度汇总" },
-      { "pagePath": "pages/profile/index", "text": "我的" }
+      {"pagePath": "pages/home/index", "text": "首页", "iconPath": "static/icons/home-muted.png", "selectedIconPath": "static/icons/home.png"},
+      {"pagePath": "pages/ledger/index", "text": "账本", "iconPath": "static/icons/book-muted.png", "selectedIconPath": "static/icons/book.png"},
+      {"pagePath": "pages/approval/index", "text": "审批", "iconPath": "static/icons/check-muted.png", "selectedIconPath": "static/icons/check.png"},
+      {"pagePath": "pages/summary/index", "text": "月度汇总", "iconPath": "static/icons/chart-muted.png", "selectedIconPath": "static/icons/chart.png"},
+      {"pagePath": "pages/profile/index", "text": "我的", "iconPath": "static/icons/user-muted.png", "selectedIconPath": "static/icons/user.png"}
     ]
   }
 }
