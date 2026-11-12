@@ -8,6 +8,7 @@
     "build:h5": "uni build",
     "dev:app": "uni -p app",
     "build:app": "uni build -p app",
+    "build:app-harmony": "uni build -p app-harmony",
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {

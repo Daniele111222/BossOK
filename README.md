@@ -62,7 +62,8 @@ npm run build
 也可以运行 `npm run check` 执行以上三项。
 
 - `npm run build`：输出 `server/dist/` 和 `app/dist/build/h5/`。
-- `npm run build:app`：编译 App 资源到 `app/dist/build/app/`，**不生成可安装 APK**。
+- `npm run build:app`：编译安卓打包所用资源到 `app/dist/build/app/`，签名 APK 由 HBuilderX 打包生成。
+- `npm run build:app-harmony`：编译原生鸿蒙资源到 `app/dist/build/app-harmony/`，签名 HAP 由 HBuilderX 和鸿蒙工具链打包生成。
 - `npm run start --workspace @bossok/server`：运行已构建服务，仍需保留 `server/migrations/`、`packages/contracts/dist/`、已安装的工作区依赖和持久化数据目录。
 - 根级命令自动先编译共享契约；修改契约后运行 `npm run build:contracts` 并重启开发进程。工作区内的单独命令假定契约已编译。
 
@@ -74,14 +75,16 @@ npm run build
 
 ## 安卓与鸿蒙安装包
 
+第一版交付签名安卓 APK 和原生鸿蒙真机安装包，两端共用应用源码和服务端。
+
 `app/src/manifest.json` 的 `appid` 留空，需要在正式运行或发行前使用自己的 DCloud 应用标识，不能填造假的 App ID。
 
 1. 安装兼容当前编译器的 HBuilderX，打开 `app/` 工程并配置 DCloud App ID。
 2. 安卓：在 HBuilderX 中运行到 Android 设备；发行时使用自己的包名、签名与证书生成 APK。
-3. 原生鸿蒙：按 HBuilderX 的 App-Harmony 运行/发行流程，配置 DevEco Studio、鸿蒙应用标识、签名和目标设备。
+3. 原生鸿蒙：在 HBuilderX 中配置 DevEco Studio、鸿蒙 `bundleName` 和对应的设备签名，在「运行到鸿蒙」流程构建签名 HAP 并安装到目标设备。
 4. 分别验证安装、网络、系统权限与覆盖升级。浏览器或 App 资源编译成功不等于真机验收成功。
 
-当前没有提供虚假签名、鸿蒙成品包或推送配置。`app-harmony` 保留平台配置入口，具体配置根据真实设备及开发者账号完成。安卓与鸿蒙不能默认共用一个安装包。
+两端的签名包和真实推送仍待配置及验收，详见 [T08 推送联调](docs/T08推送联调.md)。
 
 签名文件、数据库、环境文件和构建产物已加入 `.gitignore`；正式使用时务必备份签名及数据库，数据库在线备份应使用 SQLite 备份机制，不单独复制正在写入的主文件。
 
