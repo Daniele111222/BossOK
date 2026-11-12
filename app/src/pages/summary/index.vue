@@ -1,27 +1,31 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import type { MonthlySummary } from '@bossok/contracts';
+import type { Identity, MonthlySummary } from '@bossok/contracts';
 import { currentUser,sessionToken,spending } from '../../application';
 import CategoryIcon from '../../components/CategoryIcon.vue';
-const summary=ref<MonthlySummary|null>(null),month=ref(''),busy=ref(false),message=ref('');
+const summary=ref<MonthlySummary|null>(null),user=ref<Identity|null>(null),month=ref(''),busy=ref(false),message=ref('');
 async function refresh() {
   if(busy.value) return;
-  busy.value=true;message.value='';summary.value=null;
+  busy.value=true;message.value='';summary.value=null;user.value=null;
   try {
-    await currentUser();
+    if(!sessionToken()) return;
+    user.value=await currentUser();
+    if(!user.value.relationshipId) return;
     if(!month.value) month.value=(await spending.balances(sessionToken())).budget.date.slice(0,7);
     summary.value=await spending.summary(sessionToken(),month.value);
   } catch(e) {message.value=e instanceof Error?e.message:'加载失败';}
   finally {busy.value=false;}
 }
 onShow(()=>{void refresh();});
+function profile() { uni.switchTab({url:'/pages/profile/index'}); }
 </script>
 <template>
   <view class="page">
     <view class="page-header"><view class="header-copy"><text class="title">月度汇总</text><text class="subtitle">按已录入账目统计，看见生活的节奏</text></view><button role="button" class="btn icon-button" aria-label="刷新汇总" :disabled="busy" @click="refresh"><image class="icon" src="/static/icons/refresh.svg" /></button></view>
     <text v-if="message" role="alert" class="notice notice-warm">{{ message }}</text>
-    <picker class="picker" mode="date" fields="month" :value="month+'-01'" :disabled="busy" @change="month=String($event.detail.value).slice(0,7);refresh()"><view>{{ month || '选择月份' }} 月 ▾</view></picker>
+    <view v-if="!busy && !user?.relationshipId" class="card empty"><view class="empty-icon"><image class="icon" src="/static/icons/chart.svg" /></view><text class="empty-title">和伙伴一起，查看月度汇总</text><text class="description">{{ user ? '你已登录，请先在“我的”完成伙伴绑定。' : '请先在“我的”登录并完成伙伴绑定。' }}</text><button role="button" class="btn" @click="profile">{{ user ? '去绑定伙伴' : '前往我的' }}</button></view>
+    <picker v-if="user?.relationshipId" class="picker" mode="date" fields="month" :value="month+'-01'" :disabled="busy" @change="month=String($event.detail.value).slice(0,7);refresh()"><view>{{ month || '选择月份' }} 月 ▾</view></picker>
     <text v-if="busy" class="description" role="status">正在整理这个月的账目…</text>
     <view v-if="summary && !summary.eligibleDays" class="card empty"><view class="empty-icon"><image class="icon" src="/static/icons/chart.svg" /></view><text class="empty-title">这个月的记录，慢慢积累</text><text class="description">本月暂无预算生效后已结束的日期，暂不计算结余。尚未设置预算时，请到“我的”设置。</text></view>
     <template v-if="summary && summary.eligibleDays">

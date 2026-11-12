@@ -55,9 +55,11 @@ async function run(action: () => Promise<void>) {
 }
 async function refresh() {
   const previousId = user.value?.id;
-  user.value = null; list.value = null; detail.value = null; mutation.value = null;
+  user.value = null; list.value = null; detail.value = null; mutation.value = null; creating.value = false;
+  if (!sessionToken()) return;
   user.value = await currentUser();
   if (previousId && previousId !== user.value.id) { amount.value = ''; note.value = ''; spentOn.value = ''; month.value = ''; category.value = '餐饮'; }
+  if (!user.value.relationshipId) return;
   mutation.value = uni.getStorageSync(mutationKey()) || null;
   creating.value = !!uni.getStorageSync('new-expense'); uni.removeStorageSync('new-expense');
   const saved = uni.getStorageSync(draftKey()) as ExpenseInput | undefined;
@@ -104,7 +106,7 @@ function profile() { uni.switchTab({url:'/pages/profile/index'}); }
     </view>
     <text v-if="message" class="notice" role="alert">{{ message }}</text>
     <text v-if="busy && !user" class="description" role="status">正在加载账本…</text>
-    <view v-if="!busy && !user?.relationshipId" class="card empty"><view class="empty-icon"><image class="icon" src="/static/icons/book.svg" /></view><text class="empty-title">和伙伴一起，开始记录</text><text class="description">请先在“我的”登录并完成伙伴绑定。</text><button role="button" class="btn" @click="profile">前往我的</button></view>
+    <view v-if="!busy && !user?.relationshipId" class="card empty"><view class="empty-icon"><image class="icon" src="/static/icons/book.svg" /></view><text class="empty-title">和伙伴一起，开始记录</text><text class="description">{{ user ? '你已登录，请先在“我的”完成伙伴绑定。' : '请先在“我的”登录并完成伙伴绑定。' }}</text><button role="button" class="btn" @click="profile">{{ user ? '去绑定伙伴' : '前往我的' }}</button></view>
     <template v-if="user?.relationshipId">
       <view v-if="user.role === 'applicant' && creating && !detail" class="card">
         <text class="description">记一笔真实支出（元）；上海日期。超支也可如实录入。</text>

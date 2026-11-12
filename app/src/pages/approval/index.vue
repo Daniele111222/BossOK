@@ -29,9 +29,11 @@ async function load(page = 1) {
 }
 async function refresh() {
   const previousId = user.value?.id;
-  user.value = null; list.value = null; detail.value = null; messages.value = null; preview.value = null; balance.value = null; pending.value = null;
+  user.value = null; list.value = null; detail.value = null; messages.value = null; preview.value = null; balance.value = null; pending.value = null; creating.value = false;
+  if (!sessionToken()) return;
   user.value = await currentUser();
   if (previousId && previousId !== user.value.id) { amount.value=''; purpose.value=''; reason.value=''; opinion.value=''; month.value=''; category.value='餐饮'; }
+  if (!user.value.relationshipId) return;
   pending.value = uni.getStorageSync(key()) || null;
   creating.value = !!uni.getStorageSync('new-approval'); uni.removeStorageSync('new-approval');
   balance.value = await spending.balances(sessionToken());
@@ -120,7 +122,7 @@ function profile() { uni.switchTab({url:'/pages/profile/index'}); }
     <view class="page-header"><button role="button" v-if="detail || creating" class="btn icon-button" aria-label="返回审批列表" @click="detail=null; creating=false"><image class="icon" src="/static/icons/back.svg" /></button><view class="header-copy"><text class="title">{{ detail ? '申请详情' : creating ? '申请超支' : '审批' }}</text><text class="subtitle">{{ user?.role === 'approver' ? '小弟的超支申请，由你把关' : '提前说一声，一起做安排' }}</text></view><button role="button" v-if="!detail && !creating && user?.role === 'applicant' && user.relationshipId" class="btn icon-button" aria-label="申请超支" :disabled="busy || !!pending" @click="creating=true"><image class="icon" src="/static/icons/plus.svg" /></button></view>
     <text v-if="message" class="notice" role="alert">{{ message }}</text>
     <text v-if="busy && !user" class="description" role="status">正在同步申请与消息…</text>
-    <view v-if="!busy && !user?.relationshipId" class="card empty"><view class="empty-icon"><image class="icon" src="/static/icons/check.svg" /></view><text class="empty-title">超出预算前，一起商量</text><text class="description">请先在“我的”登录并完成伙伴绑定。</text><button role="button" class="btn" @click="profile">前往我的</button></view>
+    <view v-if="!busy && !user?.relationshipId" class="card empty"><view class="empty-icon"><image class="icon" src="/static/icons/check.svg" /></view><text class="empty-title">超出预算前，一起商量</text><text class="description">{{ user ? '你已登录，请先在“我的”完成伙伴绑定。' : '请先在“我的”登录并完成伙伴绑定。' }}</text><button role="button" class="btn" @click="profile">{{ user ? '去绑定伙伴' : '前往我的' }}</button></view>
     <template v-if="user?.relationshipId && balance">
       <view v-if="!detail" class="notice"><text class="row-title">{{ balance.budget.date }} · 申请仅当天有效</text><text>实际支出：日 ¥{{ (balance.dailySpent/100).toFixed(2) }} / 月 ¥{{ (balance.monthlySpent/100).toFixed(2) }}</text><text class="description">待消费承诺：日 ¥{{ (balance.dailyCommitted/100).toFixed(2) }} / 月 ¥{{ (balance.monthlyCommitted/100).toFixed(2) }}</text><text class="description">可安排：日 {{ balance.dailyAvailable === null ? '未设置预算' : '¥'+(balance.dailyAvailable/100).toFixed(2) }} / 月 {{ balance.monthlyAvailable === null ? '未设置预算' : '¥'+(balance.monthlyAvailable/100).toFixed(2) }}</text></view>
       <view v-if="pending" class="card"><text class="description">提交结果待确认，保留原请求，请重试。</text><button role="button" class="btn" :disabled="busy" @click="run(retry)">重试同一操作</button></view>
