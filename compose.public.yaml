@@ -1,0 +1,19 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    command:
+      - caddy
+      - reverse-proxy
+      - --from
+      - 'https://${BOSSOK_DOMAIN:?请设置 BOSSOK_DOMAIN 为公网域名}'
+      - --to
+      - server:3000
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - caddy-data:/data
+
+volumes:
+  caddy-data:

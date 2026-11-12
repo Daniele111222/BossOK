@@ -36,6 +36,35 @@ npm run dev:app
 - 服务启动时创建 `server/data/bossok.sqlite` 并按文件名依次应用 `server/migrations/*.sql`；重复启动不重复执行迁移。
 - 迁移依次建立身份、预算和账目表，不写入测试账号或虚构账目；账号通过本机受控命令创建。
 
+## Docker 部署后端
+
+镜像支持 Linux amd64 和 arm64。安装 Docker Engine 和 Docker Compose 2.24 或更新版本后，在仓库根目录运行：
+
+```bash
+docker compose up -d --build --wait
+curl -fsS http://127.0.0.1:3000/api/health
+```
+
+- 宿主机默认监听 `127.0.0.1:3000`。端口已占用时，启动前设置 `BOSSOK_PORT`。
+- 单实例运行，整个 `/data` 挂载到 `bossok-data` 命名卷。首次启动自动执行 SQL 迁移。升级时在同一 Compose 项目重新运行启动命令即可复用卷。`docker compose down` 保留数据，`docker compose down -v` 会删除数据卷。
+- 容器使用独立的数据库。要沿用已有 SQLite 数据，先备份再迁入数据卷。
+- 可选的推送配置仍放在 `server/.env`，同时设置 `PUSH_GATEWAY_URL` 与 `PUSH_GATEWAY_TOKEN`。Compose 在运行时注入配置，并固定容器的监听地址、端口和数据库路径。
+- 查看服务日志使用 `docker compose logs -f server`。创建或重置账号时沿用下文的密码输入方式，将 `npm run admin --workspace @bossok/server --` 换为 `docker compose exec -T server node dist/admin.js`。
+
+### 公网 HTTPS
+
+将 API 域名解析到服务器公网 IP，在防火墙及云安全组放行 TCP 80、443，并确认端口可由 Caddy 使用。将 `BOSSOK_DOMAIN=api.example.com` 写入仓库根目录的 `.env`，域名替换成实际值，然后运行：
+
+```bash
+docker compose -f compose.yaml -f compose.public.yaml up -d --build --wait
+```
+
+Caddy 将 HTTP 重定向到 HTTPS，自动申请和续期证书，并将流量转发给后端。证书保存在 `caddy-data` 卷。证书签发后，从服务器外运行 `curl -fsS https://api.example.com/api/health` 验证公网连通。手机端构建时将 `VITE_API_BASE_URL` 设置为 `https://api.example.com/api`，使用实际域名。[Caddy 自动 HTTPS 文档](https://caddyserver.com/docs/automatic-https)
+
+升级、停止或运行 `logs caddy` 查看签发日志时，沿用上面两个 `-f` 参数。
+
+已有 Nginx 或 Caddy 的服务器可使用基础 Compose 配置，并由现有代理把 HTTPS 请求转发到 `127.0.0.1:3000`，保留 `/api` 路径。
+
 ## 环境变量
 
 可选地复制示例配置：

@@ -1,0 +1,18 @@
+services:
+  server:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - path: ./server/.env
+        required: false
+    environment:
+      HOST: 0.0.0.0
+      PORT: '3000'
+      DATABASE_PATH: /data/bossok.sqlite
+    ports:
+      - '127.0.0.1:${BOSSOK_PORT:-3000}:3000'
+    volumes:
+      - bossok-data:/data
+
+volumes:
+  bossok-data:

@@ -1,0 +1,13 @@
+*
+!.npmrc
+!package.json
+!package-lock.json
+!tsconfig.base.json
+!packages/contracts/package.json
+!packages/contracts/tsconfig.json
+!packages/contracts/src
+!server/package.json
+!server/tsconfig.json
+!server/src
+!server/migrations
+**/.env*
