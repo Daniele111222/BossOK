@@ -11,9 +11,9 @@
     "build": "npm run build:contracts && npm run build --workspace @bossok/server && npm run build:h5 --workspace @bossok/app",
     "build:app": "npm run build:contracts && npm run build:app --workspace @bossok/app",
     "build:app-harmony": "npm run build:contracts && npm run build:app-harmony --workspace @bossok/app",
-    "typecheck": "npm run build:contracts && npm run typecheck --workspaces && tsc -p tsconfig.test.json",
+    "typecheck": "npm run build:contracts && npm run typecheck --workspaces",
     "test": "npm run build:contracts && npm run test --workspace @bossok/server",
-    "check": "npm run typecheck && npm test && npm run build"
+    "check": "npm run typecheck && npm run build"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

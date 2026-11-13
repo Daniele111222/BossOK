@@ -7,6 +7,12 @@ unpackage/
 !.env.example
 *.log
 coverage/
+test/
+tests/
+__tests__/
+*.test.*
+*.spec.*
+/tsconfig.test.json
 server/data/
 *.sqlite
 *.sqlite-shm

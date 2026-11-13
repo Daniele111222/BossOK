@@ -8,11 +8,30 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: '3000'
-      DATABASE_PATH: /data/bossok.sqlite
+      DATABASE_URL: 'postgresql://bossok:${BOSSOK_DB_PASSWORD:?请设置 BOSSOK_DB_PASSWORD}@db:5432/bossok'
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - '127.0.0.1:${BOSSOK_PORT:-3000}:3000'
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bossok
+      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD:?请设置 POSTGRES_PASSWORD}'
+      BOSSOK_DB_PASSWORD: '${BOSSOK_DB_PASSWORD:?请设置 BOSSOK_DB_PASSWORD}'
+    ports:
+      - '127.0.0.1:${BOSSOK_PG_PORT:-5432}:5432'
     volumes:
-      - bossok-data:/data
+      - bossok-pg-data:/var/lib/postgresql/data
+      - ./server/postgres/init.sql:/docker-entrypoint-initdb.d/01-bossok.sql:ro
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-h', '127.0.0.1', '-U', 'bossok', '-d', 'bossok']
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
 volumes:
-  bossok-data:
+  bossok-pg-data:

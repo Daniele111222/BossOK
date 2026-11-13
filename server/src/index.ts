@@ -2,7 +2,7 @@ import { buildApp } from './app.js';
 import { readConfig } from './config.js';
 
 const config = readConfig(process.env);
-const app = buildApp({ databasePath: config.databasePath, logger: true, pushGateway:config.pushGateway });
+const app = await buildApp({ databaseUrl: config.databaseUrl, logger: true, pushGateway:config.pushGateway });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {

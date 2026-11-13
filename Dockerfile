@@ -5,7 +5,6 @@ FROM base AS build
 COPY package.json package-lock.json .npmrc tsconfig.base.json ./
 COPY packages/contracts/package.json packages/contracts/tsconfig.json ./packages/contracts/
 COPY server/package.json server/tsconfig.json ./server/
-# shortcut: 使用随包提供的 Linux amd64/arm64 SQLite 二进制，支持其他架构时启用原生编译。
 RUN npm ci --ignore-scripts --no-audit --no-fund \
     -w @bossok/contracts -w @bossok/server --include-workspace-root
 
@@ -17,8 +16,7 @@ RUN npm run build:contracts \
        -w @bossok/contracts -w @bossok/server --include-workspace-root
 
 FROM base AS runtime
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 DATABASE_PATH=/data/bossok.sqlite
-RUN install -d -o node -g node /data
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/contracts/package.json ./packages/contracts/
@@ -29,7 +27,6 @@ COPY server/migrations ./server/migrations
 
 WORKDIR /app/server
 USER node
-RUN node -e "require('better-sqlite3')(':memory:').close()"
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
     CMD ["node", "-e", "fetch('http://127.0.0.1:' + process.env.PORT + '/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]

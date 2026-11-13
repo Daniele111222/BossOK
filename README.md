@@ -15,11 +15,11 @@ nvm use
 npm ci
 ```
 
-如果没有安装 nvm，使用其他方式切换到 Node 24 即可，运行 `node -v` 确认。SQLite 驱动包含原生扩展；无法获取当前平台预编译文件时，需要本机编译工具。
+如果没有安装 nvm，使用其他方式切换到 Node 24 即可，运行 `node -v` 确认。
 
 ## 本地运行
 
-在根目录打开两个终端，分别启动：
+先按下文设置数据库密码，运行 `docker compose up -d --wait db`。复制 `server/.env.example` 为 `server/.env`，将 `DATABASE_URL` 中的密码替换为 `BOSSOK_DB_PASSWORD`。如果修改了 `BOSSOK_PG_PORT`，一并更新连接端口。在根目录打开两个终端，分别启动：
 
 ```bash
 npm run dev:server
@@ -33,12 +33,12 @@ npm run dev:app
 - 健康接口：`GET http://127.0.0.1:3000/api/health`。
 - 正常响应：`{"status":"ok","service":"bossok-api","database":"ok"}`。
 - H5 开发的 `/api` 经 Vite 代理到本地 3000 端口。自定义服务端口时同步调整 `app/vite.config.ts` 的代理。
-- 服务启动时创建 `server/data/bossok.sqlite` 并按文件名依次应用 `server/migrations/*.sql`；重复启动不重复执行迁移。
+- 服务启动时按文件名依次应用 `server/migrations/postgres/*.sql`。已执行的迁移会被跳过。
 - 迁移依次建立身份、预算和账目表，不写入测试账号或虚构账目；账号通过本机受控命令创建。
 
 ## Docker 部署后端
 
-镜像支持 Linux amd64 和 arm64。安装 Docker Engine 和 Docker Compose 2.24 或更新版本后，在仓库根目录运行：
+安装 Docker Engine 和 Docker Compose 2.24 或更新版本。在仓库根目录的 `.env` 中设置 `POSTGRES_PASSWORD`（数据库管理员）和 `BOSSOK_DB_PASSWORD`（应用角色）。分别用 `openssl rand -hex 32` 生成两个不同的密码，十六进制密码可以直接用于连接 URL。然后运行：
 
 ```bash
 docker compose up -d --build --wait
@@ -46,12 +46,20 @@ curl -fsS http://127.0.0.1:3000/api/health
 ```
 
 - 宿主机默认监听 `127.0.0.1:3000`。端口已占用时，启动前设置 `BOSSOK_PORT`。
-- 单实例运行，整个 `/data` 挂载到 `bossok-data` 命名卷。首次启动自动执行 SQL 迁移。升级时在同一 Compose 项目重新运行启动命令即可复用卷。`docker compose down` 保留数据，`docker compose down -v` 会删除数据卷。
-- 容器使用独立的数据库。要沿用已有 SQLite 数据，先备份再迁入数据卷。
-- 可选的推送配置仍放在 `server/.env`，同时设置 `PUSH_GATEWAY_URL` 与 `PUSH_GATEWAY_TOKEN`。Compose 在运行时注入配置，并固定容器的监听地址、端口和数据库路径。
+- PostgreSQL 16 使用 `bossok-pg-data` 命名卷。从 SQLite 切换时以空库启动，需重新创建两位应用账号并绑定。旧 SQLite 卷可留作回退。`docker compose down` 保留数据，`docker compose down -v` 会删除当前配置声明的数据卷。
+- 数据库密码在首次初始化数据卷时生效。给已有数据库换密码时，先修改 PostgreSQL 角色密码，再更新 `.env` 并重建服务。
+- 可选的推送配置仍放在 `server/.env`，同时设置 `PUSH_GATEWAY_URL` 与 `PUSH_GATEWAY_TOKEN`。Compose 在运行时注入配置，并固定容器的监听地址、端口和 `DATABASE_URL`。
 - 查看服务日志使用 `docker compose logs -f server`。创建或重置账号时沿用下文的密码输入方式，将 `npm run admin --workspace @bossok/server --` 换为 `docker compose exec -T server node dist/admin.js`。
 
+### 通过 Tailscale 连接 PostgreSQL
+
+服务器和 Mac 加入同一个 tailnet。在服务器上运行 `sudo tailscale serve --bg --tcp=5432 tcp://127.0.0.1:5432`。如果修改了 `BOSSOK_PG_PORT`，将命令目标中的端口改为同一个值。云安全组无需开放 TCP 5432。通过 tailnet 访问策略将 TCP 5432 限制给有权限的用户或设备。[Tailscale Serve 文档](https://tailscale.com/docs/reference/tailscale-cli/serve)
+
+在 Mac 的数据库客户端选择 PostgreSQL。主机填服务器的 MagicDNS 名或 Tailscale IP，端口填 `5432`，数据库和用户名都填 `bossok`，密码填 `BOSSOK_DB_PASSWORD`。连接后可运行 `SELECT current_database(), current_user;` 验证。
+
 ### 公网 HTTPS
+
+当前部署的 API 地址为 `https://i-do-love.top:8443/api`。升级时沿用服务器已有的反向代理、端口、Compose 文件组合和项目名。下方 Caddy 配置适用于新装且使用标准 HTTPS 端口的部署。
 
 将 API 域名解析到服务器公网 IP，在防火墙及云安全组放行 TCP 80、443，并确认端口可由 Caddy 使用。将 `BOSSOK_DOMAIN=api.example.com` 写入仓库根目录的 `.env`，域名替换成实际值，然后运行：
 
@@ -74,29 +82,37 @@ cp server/.env.example server/.env
 cp app/.env.example app/.env.local
 ```
 
-服务端从 `server/.env` 读取 `HOST`、`PORT`、`DATABASE_PATH`，默认监听 `127.0.0.1:3000`。配置集中校验，数据库相对路径固定以 `server/` 为基准，不依赖启动目录；生产环境使用持久化目录。
+服务端从 `server/.env` 读取 `HOST`、`PORT`、`DATABASE_URL`，默认监听 `127.0.0.1:3000`。`DATABASE_URL` 必须指向 PostgreSQL。
 
-手机端的 `VITE_API_BASE_URL` 填写包含 `/api` 的完整地址，在构建时注入。例如 `https://你的接口域名/api`。此变量对用户可见，不能放密钥。
+手机端构建时在 `app/.env.local` 设置 `VITE_API_BASE_URL=https://i-do-love.top:8443/api`。此变量对用户可见，不能放密钥。
 
 手机不能用自身的 `localhost` 访问电脑服务。局域网调试需让服务监听 `0.0.0.0`，填写电脑局域网地址，并按平台配置开发网络权限。当前没有跨域放行；浏览器开发使用同源代理，生产 H5 应通过反向代理将 `/api` 转发到服务端。
 
 ## 检查与构建
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+npm run check
 ```
 
-也可以运行 `npm run check` 执行以上三项。
+`npm run check` 执行类型检查和构建。测试文件和测试类型配置保存在本地。已有 `server/tests/` 的开发环境可连接专用的 `bossok_test` 数据库运行测试，每个用例使用独立的 schema。
+
+```bash
+docker run --rm -d --name bossok-pg-test -p 127.0.0.1:35432:5432 \
+  -e POSTGRES_DB=bossok_test -e POSTGRES_USER=bossok_test \
+  -e POSTGRES_PASSWORD=bossok_test postgres:16
+docker exec bossok-pg-test pg_isready -h 127.0.0.1 -U bossok_test -d bossok_test
+TEST_DATABASE_URL=postgresql://bossok_test:bossok_test@127.0.0.1:35432/bossok_test npm test
+```
+
+等 `pg_isready` 报告接受连接后再运行测试。结束后运行 `docker stop bossok-pg-test`。
 
 - `npm run build`：输出 `server/dist/` 和 `app/dist/build/h5/`。
 - `npm run build:app`：编译安卓打包所用资源到 `app/dist/build/app/`，签名 APK 由 HBuilderX 打包生成。
 - `npm run build:app-harmony`：编译原生鸿蒙资源到 `app/dist/build/app-harmony/`，签名 HAP 由 HBuilderX 和鸿蒙工具链打包生成。
-- `npm run start --workspace @bossok/server`：运行已构建服务，仍需保留 `server/migrations/`、`packages/contracts/dist/`、已安装的工作区依赖和持久化数据目录。
+- `npm run start --workspace @bossok/server`：运行已构建服务，需配置 PostgreSQL 并保留 `server/migrations/postgres/`、`packages/contracts/dist/` 和已安装的工作区依赖。
 - 根级命令自动先编译共享契约；修改契约后运行 `npm run build:contracts` 并重启开发进程。工作区内的单独命令假定契约已编译。
 
-测试由根目录统一运行，使用真实 SQLite 内存库与临时文件，不接触开发数据库。覆盖配置校验、健康检查、错误隐藏、迁移幂等、持久化、跨端契约、网络失败和模块依赖规则。
+测试覆盖配置校验、健康检查、错误隐藏、迁移幂等、持久化、跨端契约、网络失败和模块依赖规则。
 
 初始化验证（2026-10-23，Node 24.22.1）：类型检查、2 项测试、服务端/H5 构建及 App 资源编译通过；浏览器确认首页服务与数据库连接正常，五个导航页面均可打开。未验证安卓或鸿蒙真机安装。
 
@@ -115,7 +131,7 @@ npm run build
 
 两端的签名包和真实推送仍待配置及验收，详见 [T08 推送联调](docs/T08推送联调.md)。
 
-签名文件、数据库、环境文件和构建产物已加入 `.gitignore`；正式使用时务必备份签名及数据库，数据库在线备份应使用 SQLite 备份机制，不单独复制正在写入的主文件。
+签名文件、旧 SQLite 文件、环境文件和构建产物已加入 `.gitignore`。正式使用时备份签名和数据库，PostgreSQL 在线备份使用 `pg_dump`。
 
 ## 目录
 
@@ -126,12 +142,11 @@ app/                  uni-app + Vue 3 + TypeScript
   src/platform/       uni.request Adapter
   src/pages/          首页、账本、审批、月度汇总、我的
 packages/contracts/   前后端共享类型、Schema 和运行时校验
-server/               Fastify + TypeScript + better-sqlite3
+server/               Fastify + TypeScript + PostgreSQL
   src/modules/        路由与业务 Module
-  src/infrastructure/ SQLite 初始化与迁移
+  src/infrastructure/ PostgreSQL 连接与迁移
   src/http/           HTTP 错误处理
-  migrations/         顺序执行的 SQL 迁移
-  tests/              后端行为、跨端契约与架构依赖规则
+  migrations/postgres/ 顺序执行的 PostgreSQL 迁移
 docs/                 产品与技术文档
 ```
 

@@ -1,8 +1,3 @@
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const serverRoot = fileURLToPath(new URL('../', import.meta.url));
-
 export function readConfig(env: NodeJS.ProcessEnv) {
   const portText = env.PORT ?? '3000';
   const port = Number(portText);
@@ -11,8 +6,10 @@ export function readConfig(env: NodeJS.ProcessEnv) {
   }
   const host = (env.HOST ?? '127.0.0.1').trim();
   if (!host) throw new Error('HOST 不能为空');
-  const databasePath = (env.DATABASE_PATH ?? 'data/bossok.sqlite').trim();
-  if (!databasePath) throw new Error('DATABASE_PATH 不能为空');
+  const databaseUrl = env.DATABASE_URL?.trim();
+  if (!databaseUrl || !/^postgres(?:ql)?:\/\//.test(databaseUrl) || !URL.canParse(databaseUrl)) {
+    throw new Error('DATABASE_URL 必须是 PostgreSQL 连接地址');
+  }
 
   const pushUrl=env.PUSH_GATEWAY_URL?.trim(),pushToken=env.PUSH_GATEWAY_TOKEN?.trim();
   if(!!pushUrl!==!!pushToken) throw new Error('PUSH_GATEWAY_URL 与 PUSH_GATEWAY_TOKEN 需同时配置');
@@ -24,6 +21,6 @@ export function readConfig(env: NodeJS.ProcessEnv) {
     host,
     port,
     ...(pushUrl && pushToken ? {pushGateway:{url:pushUrl,token:pushToken}} : {}),
-    databasePath: databasePath === ':memory:' ? databasePath : resolve(serverRoot, databasePath)
+    databaseUrl
   };
 }

@@ -8,7 +8,7 @@ if (!username || !['create', 'reset-password'].includes(operation) || (operation
   throw new Error('用法：admin create 用户名 approver|applicant 或 admin reset-password 用户名；密码从标准输入读取');
 }
 const password = readFileSync(0, 'utf8').replace(/\r?\n$/, '');
-const db = openDatabase(readConfig(process.env).databasePath);
+const db = await openDatabase(readConfig(process.env).databaseUrl);
 try {
   if (operation === 'create') await createAccount(db, username, role as 'approver' | 'applicant', password);
   else await resetPassword(db, username, password);
@@ -16,4 +16,4 @@ try {
 } catch {
   console.error('操作失败：检查账号、角色是否已存在，密码需 10–128 字符');
   process.exitCode = 1;
-} finally { db.close(); }
+} finally { await db.close(); }

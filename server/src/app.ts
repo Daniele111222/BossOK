@@ -6,16 +6,18 @@ import { openDatabase } from './infrastructure/database/index.js';
 import { healthModule } from './modules/health/index.js';
 import { registerErrorHandlers } from './http/errors.js';
 
-export function buildApp(options: { databasePath: string; logger?: boolean; now?: () => number; pushGateway?: {url:string;token:string}; pushSender?:PushSender }) {
+export async function buildApp(options: { databaseUrl: string; logger?: boolean; now?: () => number; pushGateway?: {url:string;token:string}; pushSender?:PushSender }) {
   const app = Fastify({
     ajv: { customOptions: { removeAdditional: false } },
     logger: options.logger ? { redact: ['req.headers.authorization', 'req.headers.cookie'] } : false
   });
-  const db = openDatabase(options.databasePath);
+  const db = await openDatabase(options.databaseUrl);
 
   const notifications=createNotifications(db,options.now??Date.now,options.pushSender ?? (options.pushGateway?createPushGateway(options.pushGateway):undefined));
   try {
-    app.addHook('onClose', async () => { await notifications.close(); db.close(); });
+    app.addHook('onClose', async () => {
+      try { await notifications.close(); } finally { await db.close(); }
+    });
     registerErrorHandlers(app);
     const identity = createIdentity(db, options.now);
     app.register(async (instance) => identity.register(instance));
@@ -24,7 +26,7 @@ export function buildApp(options: { databasePath: string; logger?: boolean; now?
     app.register(healthModule, { db, prefix: '/api' });
     return app;
   } catch (error) {
-    db.close();
+    await db.close();
     throw error;
   }
 }
